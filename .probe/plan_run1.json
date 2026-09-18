@@ -1,0 +1,15 @@
+{
+  "name": "run1_baseline",
+  "argv": ["./.venv/bin/python", "-m", "harness", "--mock", "--no-memory", "--no-checkpoint"],
+  "cwd": "/home/catalyst259/Personal-Files/Agent",
+  "env": {"DEEPSEEK_API_KEY": null, "EMBEDDING_API_KEY": null, "TERM": "xterm-256color"},
+  "rows": 24,
+  "cols": 100,
+  "quiesce": 1.2,
+  "idle_window": 3.0,
+  "hard_timeout": 25.0,
+  "actions": [
+    {"at": 1.0, "type": "send", "data": "hi", "after": "\u203a"},
+    {"at": 1.6, "type": "send", "data": "\r", "after": "\u203ahi"}
+  ]
+}

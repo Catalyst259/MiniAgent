@@ -164,6 +164,9 @@ async def test_loop_reads_patches_and_verifies(workspace):
             "skill_load",
             "assistant_text",
             "assistant_message",
+            # every call passes the permission gate, which reports its verdict even
+            # when the layer is switched off (mode=off in this harness)
+            "permission_decision",
             "terminate",
         }
     )
@@ -285,6 +288,7 @@ async def test_delegation_isolates_context_and_tools(workspace):
     child_gateway = child_gateways[0]
     child_system = child_gateway.calls[0].messages[0].content
     assert "Explorer subagent" in child_system
+    assert "maximum tool/model loop is 20 iterations" in child_system
     parent_system = gateway.calls[-1].messages[0].content
     assert "Explorer subagent" not in parent_system
 
@@ -306,6 +310,34 @@ async def test_unknown_subagent_is_reported(workspace):
     result = await harness.run("delegate to nobody")
     assert not result["observations"][0].ok
     assert "unknown subagent" in (result["observations"][0].error or "")
+
+
+async def test_subagent_internal_events_do_not_leak_to_parent(workspace):
+    from harness.agent.events import Event
+
+    events: list[Event] = []
+    responses = [
+        ScriptedResponse.tool("delegate", agent="explorer", task="map the repository"),
+        ScriptedResponse.say("summarized"),
+    ]
+    harness, _ = make_harness(workspace, responses, on_event=events.append)
+    result = await harness.run("map the repository")
+
+    assert result["termination_status"] == "final_answer"
+    kinds = [event.type for event in events]
+    assert "delegate_start" in kinds and "delegate_end" in kinds
+    start = kinds.index("delegate_start")
+    end = kinds.index("delegate_end", start)
+    assert not any(kind in {"iteration", "tool_call", "tool_result"} for kind in kinds[start + 1 : end])
+
+
+async def test_subagent_does_not_construct_parent_memory_store(workspace):
+    harness, _ = make_harness(workspace, [ScriptedResponse.say("done")])
+    harness.build()
+    child = harness._subagent_factory(harness.subagent_registry.get("explorer"), "inspect files")
+
+    assert child.use_memory is False
+    assert child.memory is None
 
 
 # -------------------------------------------------------------------- compaction

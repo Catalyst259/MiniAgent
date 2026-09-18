@@ -39,6 +39,9 @@ class Renderer:
     _printed_cells: list = field(default_factory=list)
     _last_tool_line: str = ""
     _pending_tail: str = ""
+    #: rows of raw streamed preview currently on screen (they are replaced by
+    #: the canonical rendering, never printed twice)
+    _streamed_lines: int = 0
     #: minimum seconds between two in-place tail redraws
     tail_interval: float = 0.09
 
@@ -132,6 +135,7 @@ class Renderer:
         self._last_tail = ""
         self._pending_tail = ""
         self._drawn_committed = 0
+        self._streamed_lines = 0
 
     def push_delta(self, delta: str) -> None:
         """Feed a raw Markdown delta.
@@ -167,10 +171,15 @@ class Renderer:
         """Write finished lines (they never change again).
 
         The in-place tail row is erased first, otherwise the finished line would
-        be concatenated with the preview that is already on screen.
+        be concatenated with the preview that is already on screen.  Lines are
+        clipped to one row each so the preview can be erased exactly once the
+        canonical Markdown rendering replaces it.
         """
 
-        lines = [safe_text(line) for line in chunk.splitlines()]
+        lines = [
+            clip_to_width(safe_text(line), max(1, self.width - 4))
+            for line in chunk.splitlines()
+        ]
         if not lines:
             return
         try:
@@ -179,8 +188,26 @@ class Renderer:
             self.output.flush()
         except Exception:  # pragma: no cover - terminal hiccup
             return
+        self._streamed_lines += len(lines)
         self._tail_open = False
         self._last_tail = ""
+
+    def _erase_streamed(self) -> None:
+        """Remove the raw streaming preview (rows) from the screen.
+
+        The answer is rendered once, as Markdown, when the message completes;
+        without this the same text showed up twice (raw preview + final block).
+        """
+
+        rows = self._streamed_lines
+        self._streamed_lines = 0
+        if not rows or not self.use_live_tail:
+            return
+        try:
+            self.output.write(f"\x1b[{rows}A\x1b[J")
+            self.output.flush()
+        except Exception:  # pragma: no cover - terminal hiccup
+            return
 
     def _write_tail(self, preview: str) -> None:
         text = clip_to_width(safe_text(preview), max(0, self.width - 4))
@@ -201,6 +228,8 @@ class Renderer:
                 pass
             self._tail_open = False
             self._last_tail = ""
+        # whatever is rendered next is canonical: drop the raw preview rows
+        self._erase_streamed()
 
     def end_stream(self, source: str | None = None) -> str:
         """Finalize: drop the live preview and return the canonical source."""

@@ -1,0 +1,1613 @@
+{
+  "final": {
+    "visible": [
+      "[mock model - no API key configured] task: hi reconnaissance",
+      " steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspect",
+      "ed the workspace but",
+      "did not reason about the task. Configure a real model to get",
+      " actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./m",
+      "iniagent.sh \"\"",
+      "› last",
+      "── final answer ──",
+      "[mock model - no API key configured] task: hi reconnaissance",
+      " steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspect",
+      "ed the workspace but",
+      "did not reason about the task. Configure a real model to get",
+      " actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./m",
+      "iniagent.sh \"\"",
+      "",
+      "",
+      "›",
+      ""
+    ],
+    "scrollback_len": 1,
+    "scrollback": [
+      "› one more                                                  ed the workspace but"
+    ],
+    "modes": {
+      "12": false,
+      "25": true,
+      "2004": false,
+      "1": false,
+      "7": true
+    },
+    "mode_events": [
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        2004,
+        true
+      ],
+      [
+        1,
+        false
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        2004,
+        false
+      ],
+      [
+        2004,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        2004,
+        false
+      ],
+      [
+        2004,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        2004,
+        false
+      ]
+    ],
+    "unknown_sequences": [],
+    "other_events": []
+  },
+  "snapshots": [
+    {
+      "label": "bottom",
+      "at": 2.04,
+      "visible": [
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 4688
+    },
+    {
+      "label": "after_pageup",
+      "at": 2.641,
+      "visible": [
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 4723
+    },
+    {
+      "label": "after_wheelup",
+      "at": 3.242,
+      "visible": [
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 4753
+    },
+    {
+      "label": "after_wheeldown",
+      "at": 3.743,
+      "visible": [
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 4778
+    },
+    {
+      "label": "after_end",
+      "at": 4.244,
+      "visible": [
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 4808
+    },
+    {
+      "label": "after_resize60",
+      "at": 5.445,
+      "visible": [
+        "› one more                                                  ed the workspace but",
+        "[mock model - no API key configured] task: hi reconnaissance",
+        " steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspect",
+        "ed the workspace but",
+        "did not reason about the task. Configure a real model to get",
+        " actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./m",
+        "iniagent.sh \"\"",
+        "› last",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance",
+        " steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspect",
+        "ed the workspace but",
+        "did not reason about the task. Configure a real model to get",
+        " actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./m",
+        "iniagent.sh \"\"",
+        "",
+        "",
+        "›"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 6382
+    }
+  ],
+  "resize": {
+    "before": [
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+      "› hi again",
+      "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+      "› one more",
+      "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+      "› last",
+      "── final answer ──",
+      "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"\"",
+      "",
+      "›"
+    ],
+    "scrollback_before": [],
+    "before_at": 4.244
+  }
+}

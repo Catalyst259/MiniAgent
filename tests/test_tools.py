@@ -108,6 +108,39 @@ def test_grep_invalid_regex(ctx):
         grep(ctx, "([unclosed")
 
 
+def test_grep_does_not_follow_symlinks_out_of_the_workspace(ctx, tmp_path):
+    """Recursive search must not read a file the workspace guard protects.
+
+    A symlink keeps its in-workspace path while pointing anywhere, so a plain
+    string-prefix check ("is this path under the search root?") is not enough.
+    """
+
+    secret = tmp_path.parent / "outside-secret.txt"
+    secret.write_text("TOPSECRET=1\n", encoding="utf-8")
+    root = ctx.workspace.root
+    try:
+        (root / "linked.txt").symlink_to(secret)
+        (root / "linked_dir").symlink_to(secret.parent, target_is_directory=True)
+    except OSError:  # pragma: no cover - platform without symlink support
+        pytest.skip("symlinks are not available here")
+
+    out = grep(ctx, "TOPSECRET", path=".")
+    assert "TOPSECRET=1" not in out, f"grep leaked a file outside the workspace: {out}"
+    assert "no matches" in out
+    assert "linked.txt" not in out and "linked_dir" not in out
+
+    # the non-recursive path is refused outright
+    with pytest.raises(ToolPermissionError):
+        grep(ctx, "TOPSECRET", path="linked.txt")
+
+
+def test_grep_still_searches_nested_directories(ctx, project):
+    """The symlink guard must not break ordinary recursion."""
+
+    out = grep(ctx, "return", path=".")
+    assert "src/app.py" in out and "src/util.py" in out
+
+
 # ------------------------------------------------------------------ write_file
 def test_write_file_new_and_overwrite(ctx):
     assert "created" in write_file(ctx, "new/thing.txt", "hello\n")

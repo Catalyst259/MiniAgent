@@ -1,0 +1,26 @@
+  0|This run used the offline deterministic model, so it inspected the workspace but
+  1|did not reason about the task. Configure a real model to get actual work done:
+  2|export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh "<your
+  3|task>"
+  4|› one more
+  5|[mock model - no API key configured] task: hi reconnaissance steps performed: 1
+  6|
+  7|This run used the offline deterministic model, so it inspected the workspace but
+  8|did not reason about the task. Configure a real model to get actual work done:
+  9|export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh "<your
+ 10|task>"
+ 11|› last one
+ 12|── final answer ──
+ 13|[mock model - no API key configured] task: hi reconnaissance steps performed: 1
+ 14|
+ 15|This run used the offline deterministic model, so it inspected the workspace but
+ 16|did not reason about the task. Configure a real model to get actual work done:
+ 17|export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh "<your
+ 18|task>"
+ 19|
+ 20|
+ 21|›
+ 22| MiniAgent · mock-main · idle   PageUp/wheel: history · Ctrl+O: expand · Ctrl+C: interrupt
+ 23|
+--- scrollback: 1 lines ---
+    0|

@@ -1,0 +1,636 @@
+{
+  "final": {
+    "visible": [
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+      "task>\"",
+      "› one more",
+      "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+      "task>\"",
+      "› last one",
+      "── final answer ──",
+      "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+      "",
+      "This run used the offline deterministic model, so it inspected the workspace but",
+      "did not reason about the task. Configure a real model to get actual work done:",
+      "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+      "task>\"",
+      "",
+      "",
+      "›",
+      " MiniAgent · mock-main · idle   PageUp/wheel: history · Ctrl+O: expand · Ctrl+C: interrupt",
+      ""
+    ],
+    "scrollback_len": 1,
+    "scrollback": [
+      ""
+    ],
+    "modes": {
+      "12": false,
+      "25": true,
+      "2004": false,
+      "1": false,
+      "1000": false,
+      "1003": false,
+      "1015": false,
+      "1006": false,
+      "7": true
+    },
+    "mode_events": [
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        2004,
+        true
+      ],
+      [
+        1,
+        false
+      ],
+      [
+        1000,
+        true
+      ],
+      [
+        1003,
+        true
+      ],
+      [
+        1015,
+        true
+      ],
+      [
+        1006,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        25,
+        false
+      ],
+      [
+        7,
+        false
+      ],
+      [
+        7,
+        true
+      ],
+      [
+        12,
+        false
+      ],
+      [
+        25,
+        true
+      ],
+      [
+        1000,
+        false
+      ],
+      [
+        1015,
+        false
+      ],
+      [
+        1006,
+        false
+      ],
+      [
+        1003,
+        false
+      ],
+      [
+        2004,
+        false
+      ]
+    ],
+    "unknown_sequences": [],
+    "other_events": []
+  },
+  "snapshots": [
+    {
+      "label": "bottom",
+      "at": 2.092,
+      "visible": [
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› last one",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   PageUp/wheel: history · Ctrl+O: expand · Ctrl+C: interrupt"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 7134
+    },
+    {
+      "label": "after_pageup1",
+      "at": 2.693,
+      "visible": [
+        "› hi",
+        "● list_dir  {\"path\": \".\", \"depth\": 1}  (2 ms)",
+        "  │ ./ (17 entries):",
+        "  │ harness/",
+        "  │ scripts/",
+        "  │ … 15 more line(s)  (Ctrl+O 展开)",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   ↑ 14 line(s) above the latest · Ctrl+End jumps back"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 8183
+    },
+    {
+      "label": "after_pageup2",
+      "at": 3.294,
+      "visible": [
+        "› hi",
+        "● list_dir  {\"path\": \".\", \"depth\": 1}  (2 ms)",
+        "  │ ./ (17 entries):",
+        "  │ harness/",
+        "  │ scripts/",
+        "  │ … 15 more line(s)  (Ctrl+O 展开)",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   ↑ 14 line(s) above the latest · Ctrl+End jumps back"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 8188
+    },
+    {
+      "label": "after_wheelup",
+      "at": 3.894,
+      "visible": [
+        "› hi",
+        "● list_dir  {\"path\": \".\", \"depth\": 1}  (2 ms)",
+        "  │ ./ (17 entries):",
+        "  │ harness/",
+        "  │ scripts/",
+        "  │ … 15 more line(s)  (Ctrl+O 展开)",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   ↑ 14 line(s) above the latest · Ctrl+End jumps back"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 8193
+    },
+    {
+      "label": "after_wheeldown",
+      "at": 4.494,
+      "visible": [
+        "  │ harness/",
+        "  │ scripts/",
+        "  │ … 15 more line(s)  (Ctrl+O 展开)",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› hi again",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   ↑ 11 line(s) above the latest · Ctrl+End jumps back"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 9583
+    },
+    {
+      "label": "after_ctrlend",
+      "at": 5.095,
+      "visible": [
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› one more",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "› last one",
+        "── final answer ──",
+        "[mock model - no API key configured] task: hi reconnaissance steps performed: 1",
+        "",
+        "This run used the offline deterministic model, so it inspected the workspace but",
+        "did not reason about the task. Configure a real model to get actual work done:",
+        "export DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh \"<your",
+        "task>\"",
+        "",
+        "",
+        "›",
+        " MiniAgent · mock-main · idle   PageUp/wheel: history · Ctrl+O: expand · Ctrl+C: interrupt"
+      ],
+      "scrollback_len": 0,
+      "write_calls": 11165
+    }
+  ],
+  "resize": {}
+}

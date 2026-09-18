@@ -126,6 +126,7 @@ def test_default_registry_has_all_documented_commands():
         "tools",
         "skills",
         "agents",
+        "permissions",
         "compact",
         "clear",
         "exit",
@@ -134,7 +135,8 @@ def test_default_registry_has_all_documented_commands():
 
 def test_registry_filter_prefix_and_fuzzy():
     registry = build_default_registry({})
-    assert [m.command.name for m in registry.filter("mo")] == ["model"]
+    # "/mo" matches "permissions" as a fuzzy subsequence, but "model" ranks first
+    assert [m.command.name for m in registry.filter("mo")][0] == "model"
     fuzzy = [m.command.name for m in registry.filter("mdl")]
     assert "model" in fuzzy
     assert registry.filter("zzzz") == []
@@ -167,11 +169,11 @@ def test_parse_slash():
 def test_popup_is_derived_from_composer_text():
     popup = CommandPopup(build_default_registry({}), CommandPopupState())
     popup.sync("/")
-    assert popup.visible and len(popup.matches) == 9
+    assert popup.visible and len(popup.matches) == 10
     popup.sync("/mo")
-    assert [m.command.name for m in popup.matches] == ["model"]
+    assert [m.command.name for m in popup.matches][0] == "model"
     popup.sync("/")
-    assert len(popup.matches) == 9
+    assert len(popup.matches) == 10
     popup.sync("plain text")
     assert not popup.visible and popup.matches == []
 
@@ -322,7 +324,7 @@ def test_assistant_cell_renders_markdown():
 def test_tool_cell_lifecycle_and_preview():
     console = RecordingConsole()
     cell = ToolCell(call_id="1", tool="shell", arguments={"command": "pytest"})
-    assert cell.status is ToolStatus.RUNNING and cell.glyph == "●"
+    assert cell.status is ToolStatus.RUNNING and cell.glyph == "◐"
     cell.render(console)
     assert "shell" in text_of(console) and "pytest" in text_of(console)
 
@@ -527,7 +529,10 @@ async def test_app_help_lists_commands(config):
     await app.setup()
     await app.handle_input("/help")
     rendered = "\n".join(str(entry) for entry in app.renderer.console.entries)
-    for name in ("/status", "/model", "/tools", "/skills", "/agents", "/compact", "/clear", "/exit"):
+    for name in (
+        "/status", "/model", "/tools", "/skills", "/agents",
+        "/permissions", "/compact", "/clear", "/exit",
+    ):
         assert name in rendered
 
 
@@ -766,7 +771,7 @@ async def test_tool_call_creates_one_cell_and_renders_pending_then_done(config):
         for entry in app.renderer.console.entries
     ]
     for tool in ("list_dir", "glob"):
-        pending = [b for b in bodies if b.startswith(f"● {tool}") and b.endswith("…")]
+        pending = [b for b in bodies if b.startswith(f"◐ {tool}") and b.endswith("…")]
         finished = [b for b in bodies if b.startswith(f"● {tool}") and not b.endswith("…")]
         assert len(pending) == 1, f"{tool}: expected exactly one pending line, got {len(pending)}"
         assert len(finished) == 1, f"{tool}: expected exactly one finished line, got {len(finished)}"

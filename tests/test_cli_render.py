@@ -148,8 +148,57 @@ def test_streamed_lines_land_one_per_row(live):
     assert "  │ The problem is the regex.\n" in out
     # ...while the mutable tail is redrawn in place on a single row
     assert "\r\x1b[2K  │ Done." in out
-    # and the live row is erased at the end
-    assert out.rstrip().endswith("\r\x1b[2K")
+    # and the whole raw preview (2 committed rows) is erased at the end, so the
+    # canonical Markdown rendering can replace it instead of repeating it
+    assert out.rstrip().endswith("\x1b[2A\x1b[J")
+
+
+def test_finished_answer_is_not_printed_twice_on_a_terminal():
+    """Streaming preview + final Markdown must not duplicate the answer."""
+
+    import re
+
+    class _TTY(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    captured = _TTY()
+    renderer = Renderer(
+        console=Console(file=captured, width=100, highlight=False),
+        output=captured,
+        use_live_tail=True,
+    )
+    renderer.begin_stream()
+    for delta in ("hello world\n", "second line\n"):
+        renderer.push_delta(delta)
+    source = renderer.end_stream()
+    renderer.final_answer(AssistantCell(source=source or "hello world\nsecond line", complete=True))
+
+    out = captured.getvalue()
+    assert "  │ hello world\n" in out, "the live preview should still be streamed"
+    assert "\x1b[2A\x1b[J" in out, "the raw preview rows must be erased"
+
+    # Replay the escape sequences: after erasing, the answer appears once.
+    rows = [""]
+    cursor = 0
+    for chunk in re.split(r"(\x1b\[\d*A|\x1b\[J|\r\x1b\[2K|\n)", out):
+        if not chunk:
+            continue
+        if chunk == "\n":
+            rows.append("")
+            cursor += 1
+        elif chunk == "\r\x1b[2K":
+            rows[cursor] = ""
+        elif chunk == "\x1b[J":
+            del rows[cursor + 1 :]
+            rows[cursor] = ""
+        elif re.fullmatch(r"\x1b\[\d+A", chunk):
+            cursor = max(0, cursor - int(chunk[2:-1]))
+        else:
+            rows[cursor] += chunk
+    visible = "\n".join(rows)
+    assert visible.count("hello world") == 1, visible
+    assert "final answer" in visible
 
 
 def test_tool_print_erases_the_live_row_first(live):
@@ -159,7 +208,7 @@ def test_tool_print_erases_the_live_row_first(live):
     renderer.render_cell(ToolCell(call_id="1", tool="read_file", arguments={"path": "a.py"}))
     out = captured.getvalue()
     # the row holding the streamed preview must be cleared before the tool line
-    assert "\r\x1b[2K● read_file" in out, "the live row was not erased before the tool header"
+    assert "\r\x1b[2K◐ read_file" in out, "the live row was not erased before the tool header"
 
 
 def test_final_answer_has_its_own_marker_and_block():
@@ -172,19 +221,103 @@ def test_final_answer_has_its_own_marker_and_block():
     assert rendered.count("──") >= 2
 
 
-def test_transcript_cursor_tracks_last_line():
-    from types import SimpleNamespace
-    from harness.cli.cells import AssistantCell, UserCell
+def _state(cells, **kwargs):
+    """A minimal AppState stand-in for transcript tests."""
 
-    state = SimpleNamespace(
-        history_cells=[UserCell(text="question"), AssistantCell(source="answer")]
+    from types import SimpleNamespace
+
+    base = {"history_cells": list(cells), "expanded_tool_ids": set(), "activity": ""}
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
+def _rendered(control) -> str:
+    return "".join(text for _style, text in control._get_fragments())
+
+
+def test_transcript_pane_pages_by_a_full_screen():
+    """PageUp moves exactly one window height, not eight logical lines."""
+
+    from prompt_toolkit.layout import Window
+
+    from harness.cli.render.transcript import TranscriptPane
+
+    pane = TranscriptPane(Window(TranscriptControl(_state([]))))
+    pane.window_height = 10
+    pane.content_height = 100
+    pane.to_bottom()
+    assert pane.vertical_scroll == 90
+    assert pane.at_bottom
+
+    pane.page(-1)
+    assert pane.vertical_scroll == 81  # one screen up, immediately visible
+    assert pane.scrolled_up_by == 9
+
+    pane.page(1)
+    assert pane.vertical_scroll == 90
+    assert pane.at_bottom
+
+
+def test_transcript_pane_keeps_following_only_while_at_the_bottom():
+    from prompt_toolkit.layout import Window
+
+    from harness.cli.render.transcript import TranscriptPane
+
+    pane = TranscriptPane(Window(TranscriptControl(_state([]))))
+    pane.window_height = 10
+    pane.content_height = 100
+    pane.to_bottom()
+
+    # new content arrives while the user reads the newest line: follow it
+    pane.content_height = 120
+    pane._apply_scroll()
+    assert pane.vertical_scroll == 110
+
+    # the user scrolls up: new content must not move the viewport
+    pane.page(-1)
+    assert pane.vertical_scroll == 101
+    pane.content_height = 140
+    pane._apply_scroll()
+    assert pane.vertical_scroll == 101
+
+    # Ctrl+End goes back to the tail and resumes following
+    pane.to_bottom()
+    assert pane.vertical_scroll == 130
+    pane.content_height = 150
+    pane._apply_scroll()
+    assert pane.vertical_scroll == 140
+
+
+def test_transcript_hides_nothing_about_a_running_tool():
+    """A running tool cell is not in history yet and used to be invisible."""
+
+    from harness.cli.cells import ToolStatus
+
+    cell = ToolCell(call_id="c1", tool="shell", arguments={"command": "pytest -q"})
+    state = _state([], active_cell=cell, activity="running shell")
+    rendered = _rendered(TranscriptControl(state))
+    assert "shell" in rendered
+    assert "pytest -q" in rendered  # arguments are shown
+    assert "running shell" in rendered
+
+
+def test_transcript_tool_header_shows_arguments_and_duration():
+    from harness.cli.cells import ToolStatus
+
+    cell = ToolCell(
+        call_id="c2",
+        tool="read_file",
+        arguments={"path": "harness/cli/app.py"},
+        output="line",
+        status=ToolStatus.DONE,
+        duration_ms=42,
     )
-    control = TranscriptControl(state)
-    assert control.get_cursor_position().y == 1
+    rendered = _rendered(TranscriptControl(_state([cell])))
+    assert 'read_file  {"path": "harness/cli/app.py"}' in rendered
+    assert "(42 ms)" in rendered
 
 
 def test_transcript_uses_tool_preview_limit():
-    from types import SimpleNamespace
     from harness.cli.cells import ToolStatus
 
     cell = ToolCell(
@@ -193,7 +326,7 @@ def test_transcript_uses_tool_preview_limit():
         output="\n".join(f"line {i}" for i in range(12)),
         status=ToolStatus.DONE,
     )
-    fragments = TranscriptControl(SimpleNamespace(history_cells=[cell]))._get_fragments()
+    fragments = TranscriptControl(_state([cell]))._get_fragments()
     rendered = "".join(text for _style, text in fragments)
     assert "line 2" in rendered
     assert "line 3" not in rendered
@@ -201,7 +334,8 @@ def test_transcript_uses_tool_preview_limit():
 
 
 def test_transcript_tool_can_expand_without_changing_tool_output():
-    from types import SimpleNamespace
+    """Ctrl+O expands the body to every line, not to a bigger cap."""
+
     from harness.cli.cells import ToolStatus
 
     cell = ToolCell(
@@ -210,33 +344,212 @@ def test_transcript_tool_can_expand_without_changing_tool_output():
         output="\n".join(f"line {i}" for i in range(12)),
         status=ToolStatus.DONE,
     )
-    state = SimpleNamespace(history_cells=[cell], expanded_tool_ids={"expand-me"})
+    state = _state([cell], expanded_tool_ids={"expand-me"})
     fragments = TranscriptControl(state)._get_fragments()
     rendered = "".join(text for _style, text in fragments)
     assert "line 7" in rendered
-    assert "line 8" not in rendered
-    assert "4 more line(s)" in rendered
+    assert "line 11" in rendered
+    assert "more line(s)" not in rendered
     assert cell.output.count("line") == 12
 
 
-def test_transcript_shows_non_persistent_activity():
-    from types import SimpleNamespace
+def test_transcript_clips_a_long_tool_line_to_one_row():
+    """A 5000-column line must not push the whole transcript off screen."""
 
-    state = SimpleNamespace(history_cells=[], expanded_tool_ids=set(), activity="waiting for model")
-    rendered = "".join(text for _style, text in TranscriptControl(state)._get_fragments())
+    from harness.cli.cells import ToolStatus
+
+    cell = ToolCell(call_id="wide", tool="shell", output="A" * 5000, status=ToolStatus.DONE)
+    control = TranscriptControl(_state([cell]))
+    control.width = 40
+    rendered = _rendered(control)
+    body = [line for line in rendered.splitlines() if line.startswith("  │ ")]
+    assert len(body) == 1
+    assert len(body[0]) <= 40
+    assert body[0].endswith("…")
+
+
+def test_transcript_shows_reasoning_next_to_the_answer():
+    from harness.cli.cells import AssistantCell
+
+    cell = AssistantCell(source="done", reasoning="step 1\nstep 2", complete=True)
+    rendered = _rendered(TranscriptControl(_state([cell])))
+    assert "thinking" in rendered
+    assert "step 1" in rendered
+    assert "done" in rendered
+
+
+def test_transcript_collapses_long_reasoning_until_expanded():
+    from harness.cli.cells import AssistantCell
+
+    cell = AssistantCell(
+        source="done",
+        reasoning="\n".join(f"thought {i}" for i in range(20)),
+        complete=True,
+    )
+    collapsed = _rendered(TranscriptControl(_state([cell])))
+    assert "thought 0" in collapsed
+    assert "thought 19" not in collapsed
+    assert "more line(s)" in collapsed
+
+    from harness.cli.cells.base import reasoning_key
+
+    expanded = _rendered(
+        TranscriptControl(_state([cell], expanded_tool_ids={reasoning_key(cell)}))
+    )
+    assert "thought 19" in expanded
+
+
+def test_transcript_state_toggle_expands_the_latest_expandable_cell():
+    from harness.cli.cells import AssistantCell, ToolStatus
+    from harness.cli.state import AppState
+
+    tool = ToolCell(call_id="t1", tool="grep", output="a\nb", status=ToolStatus.DONE)
+    assistant = AssistantCell(source="answer", reasoning="why", complete=True)
+    state = AppState(history_cells=[tool, assistant])
+    state.toggle_latest_expandable()
+    assert state.expanded_tool_ids  # the assistant reasoning block
+    state.toggle_latest_expandable()
+    assert not state.expanded_tool_ids
+
+
+def test_transcript_shows_non_persistent_activity():
+    rendered = _rendered(TranscriptControl(_state([], activity="waiting for model")))
     assert "waiting for model" in rendered
 
 
 def test_transcript_renders_assistant_markdown():
-    from types import SimpleNamespace
-
-    state = SimpleNamespace(
-        history_cells=[AssistantCell(source="## Title\n\n- item")],
-        expanded_tool_ids=set(),
-    )
-    rendered = "".join(text for _style, text in TranscriptControl(state)._get_fragments())
+    state = _state([AssistantCell(source="## Title\n\n- item", complete=True)])
+    rendered = _rendered(TranscriptControl(state))
     assert "Title" in rendered and "• item" in rendered
     assert "## Title" not in rendered
+    styles = [style for style, _text in TranscriptControl(state)._get_fragments()]
+    assert any("underline" in style or "bold" in style for style in styles)
+
+
+def test_transcript_streaming_tail_is_not_rendered_as_markdown():
+    """Half a code fence in the live tail must not restyle the answer."""
+
+    cell = AssistantCell(source="intro\n```python\nx = ", complete=False)
+    rendered = _rendered(TranscriptControl(_state([cell])))
+    assert "intro" in rendered
+    assert "x = " in rendered
+
+
+def test_markdown_keeps_links_and_angle_brackets():
+    """Regression: OSC-8 payload leaked as text; <value> was swallowed."""
+
+    state = _state(
+        [
+            AssistantCell(
+                source="see [docs](https://example.com) and use --flag <value> plus Vec<T>",
+                complete=True,
+            )
+        ]
+    )
+    rendered = _rendered(TranscriptControl(state))
+    assert "8;id=" not in rendered
+    assert "8;;" not in rendered
+    assert "docs" in rendered
+    assert "<value>" in rendered
+    assert "Vec<T>" in rendered
+
+
+def test_markdown_escapes_only_outside_code_spans():
+    from harness.cli.render.transcript import _escape_angle_brackets
+
+    assert _escape_angle_brackets("a <b> c") == "a \\<b\\> c"
+    assert _escape_angle_brackets("`a <b> c`") == "`a <b> c`"
+    assert _escape_angle_brackets("```\n<b>\n```") == "```\n<b>\n```"
+    # a blockquote marker is syntax, not text
+    assert _escape_angle_brackets("> quoted <b>") == "> quoted \\<b\\>"
+    assert _escape_angle_brackets(">> nested <b>") == ">> nested \\<b\\>"
+
+
+def test_wheel_direction_understands_both_encodings():
+    from harness.cli.mouse import wheel_direction
+
+    assert wheel_direction("\x1b[<64;12;6M") == -1  # SGR wheel up
+    assert wheel_direction("\x1b[<65;12;6M") == 1  # SGR wheel down
+    assert wheel_direction("\x1b[<68;12;6M") == -1  # shift+wheel up
+    assert wheel_direction("\x1b[<64;12;6m") is None  # release, not a wheel
+    assert wheel_direction("\x1b[<0;12;6M") is None  # left button
+    assert wheel_direction("\x1b[M" + chr(32 + 64) + "ab") == -1  # X10 wheel up
+    assert wheel_direction("\x1b[M" + chr(32 + 65) + "ab") == 1  # X10 wheel down
+    assert wheel_direction("") is None
+    assert wheel_direction("\x1b[5~") is None  # PageUp is not a mouse event
+
+
+def test_reasoning_reaches_the_transcript_control():
+    """The bridge used to hardcode reasoning=None, so CoT never rendered."""
+
+    from types import SimpleNamespace
+
+    from harness.agent.events import Event
+
+    translated = translate(
+        Event(
+            type="assistant_message",
+            message="answer",
+            data={"iteration": 1, "reasoning": "first I looked at the code"},
+        )
+    )
+    assert "reasoning" in dir(translated)
+    assert translated.reasoning == "first I looked at the code"
+
+    cell = AssistantCell(source="answer", reasoning=translated.reasoning, complete=True)
+    rendered = "".join(
+        text for _style, text in TranscriptControl(_state([cell]))._get_fragments()
+    )
+    assert "first I looked at the code" in rendered
+
+
+def test_runtime_assistant_message_event_carries_reasoning():
+    """nodes.py must put the reasoning into the event payload."""
+
+    import inspect
+
+    from harness.orchestration import nodes
+
+    source = inspect.getsource(nodes)
+    assert '"reasoning": message.reasoning' in source
+
+
+def test_command_output_becomes_transcript_cells():
+    """Slash-command output must live in the transcript, not above the UI."""
+
+    import asyncio
+
+    from harness.cli.app import MiniAgentApp, Session
+
+    async def run() -> None:
+        app = MiniAgentApp(session=None)
+        app._ui_app = type("FakeApp", (), {"invalidate": lambda self: None})()
+        await Session.cmd_help(object(), app)
+        assert app.state.history_cells, "command output did not enter the transcript"
+        text = "".join(getattr(cell, "message", "") for cell in app.state.history_cells)
+        assert "shell command" in text
+
+    asyncio.run(run())
+
+
+def test_markdown_renders_at_the_requested_width(monkeypatch):
+    """The layout width comes from the window, not a hardcoded 120.
+
+    ``TERM`` must be a real terminal name: rich falls back to 80x25 and ignores
+    ``width`` when the terminal looks "dumb" (which is the case under pytest).
+    """
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    from harness.cli.render.transcript import _render_markdown
+    from harness.cli.sanitize import display_width
+
+    source = "word " * 60
+    narrow = "".join(text for _style, text in _render_markdown(source, width=60))
+    wide = "".join(text for _style, text in _render_markdown(source, width=120))
+    narrow_width = max(display_width(line) for line in narrow.splitlines() if line.strip())
+    wide_width = max(display_width(line) for line in wide.splitlines() if line.strip())
+    assert narrow_width <= 60
+    assert wide_width > narrow_width
 
 
 def test_stopped_turn_says_why():

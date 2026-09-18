@@ -1,0 +1,145 @@
+{
+  "name": "keys_probe",
+  "mode": "headless-vt100-capture",
+  "rows_rows_note": "terminal size used for Vt100_Output.get_size()",
+  "rows": 24,
+  "cols": 100,
+  "total_bytes": 11017,
+  "probe_wall_seconds": 6.251,
+  "marks": [
+    {
+      "label": "banner",
+      "at": 0.6999,
+      "offset": 12
+    },
+    {
+      "label": "wait_for:'›':ok",
+      "at": 0.7353,
+      "offset": 109
+    },
+    {
+      "label": "turn_start:'hi'",
+      "at": 1.1364,
+      "offset": 205
+    },
+    {
+      "label": "turn_end:'hi'",
+      "at": 1.1642,
+      "offset": 1159
+    },
+    {
+      "label": "turn_start:'hi again'",
+      "at": 1.1642,
+      "offset": 1159
+    },
+    {
+      "label": "turn_end:'hi again'",
+      "at": 1.185,
+      "offset": 1788
+    },
+    {
+      "label": "turn_start:'one more'",
+      "at": 1.185,
+      "offset": 1788
+    },
+    {
+      "label": "turn_end:'one more'",
+      "at": 1.2169,
+      "offset": 3390
+    },
+    {
+      "label": "turn_start:'last'",
+      "at": 1.2169,
+      "offset": 3390
+    },
+    {
+      "label": "turn_end:'last'",
+      "at": 1.2393,
+      "offset": 4842
+    },
+    {
+      "label": "snapshot:bottom",
+      "at": 2.0396,
+      "offset": 6686
+    },
+    {
+      "label": "send:'PageUp'",
+      "at": 2.0397,
+      "offset": 6686
+    },
+    {
+      "label": "snapshot:after_pageup",
+      "at": 2.6408,
+      "offset": 6910
+    },
+    {
+      "label": "send:'SGR_wheel_up'",
+      "at": 2.6408,
+      "offset": 6910
+    },
+    {
+      "label": "snapshot:after_wheelup",
+      "at": 3.2419,
+      "offset": 7102
+    },
+    {
+      "label": "send:'SGR_wheel_down'",
+      "at": 3.2419,
+      "offset": 7102
+    },
+    {
+      "label": "snapshot:after_wheeldown",
+      "at": 3.7431,
+      "offset": 7262
+    },
+    {
+      "label": "send:'End'",
+      "at": 3.7431,
+      "offset": 7262
+    },
+    {
+      "label": "snapshot:after_end",
+      "at": 4.2441,
+      "offset": 7454
+    },
+    {
+      "label": "resize:60x24",
+      "at": 4.2443,
+      "offset": 7454
+    },
+    {
+      "label": "snapshot:after_resize60",
+      "at": 5.4451,
+      "offset": 9906
+    },
+    {
+      "label": "quit",
+      "at": 6.0463,
+      "offset": 11017
+    },
+    {
+      "label": "END",
+      "at": 6.2484,
+      "offset": 11017
+    }
+  ],
+  "idle": null,
+  "writes": {
+    "total_write_calls": 7151,
+    "tail_4s_write_calls": 2448,
+    "tail_4s_writes_per_second": 612.0,
+    "tail_4s_max_gap_seconds": 0.1022,
+    "run_max_gap_seconds": 0.1056,
+    "run_write_calls_per_second": 1144.45
+  },
+  "cpr_queries": 0,
+  "final_scrollback_len": 1,
+  "modes": {
+    "12": false,
+    "25": true,
+    "2004": false,
+    "1": false,
+    "7": true
+  },
+  "hard_timeout": 70.0
+}

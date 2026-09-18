@@ -29,6 +29,7 @@ from harness.memory.service import MemoryService
 from harness.memory.store import build_memory_store
 from harness.memory.summary import SummaryService
 from harness.orchestration.graph import Orchestrator, fresh_thread_id
+from harness.permission import build_permission_stack
 from harness.skills.loader import SkillLoader
 from harness.skills.registry import SkillRegistry
 from harness.subagents.registry import SubAgentRegistry
@@ -50,6 +51,8 @@ SUBAGENT_PREAMBLE = """You are the `{name}` subagent of a terminal coding agent.
 
 Operating constraints:
 - You received only the task and the context below; you cannot see the parent conversation.
+- Your maximum tool/model loop is {max_iterations} iterations. Use the budget deliberately,
+  stop exploring before it is exhausted, and return a concise partial result if needed.
 - Stay inside the workspace. Report file paths and line numbers, not large code dumps.
 - End with the required section headings of your contract, filled in.
 - Be concise: the main agent has a limited context budget.
@@ -68,6 +71,8 @@ class AgentHarness:
         on_event: Callable | None = None,
         thread_id: str | None = None,
         harness_factory: Callable[..., "AgentHarness"] | None = None,
+        approval_provider: Any = None,
+        permission_memory: Any = None,
     ) -> None:
         self.config = config
         self.model_name = model_name or config.default_model
@@ -87,6 +92,7 @@ class AgentHarness:
         self.subagent_runtime: SubAgentRuntime | None = None
         self.tool_registry: ToolRegistry | None = None
         self.tool_runtime: ToolRuntime | None = None
+        self.permission: Any = None
         self.context_manager: ContextManager | None = None
         self.context_builder: ContextBuilder | None = None
         self.gateway: Any = None
@@ -102,6 +108,19 @@ class AgentHarness:
         self.skill_allowlist: list[str] | None = None
         self.allow_delegation: bool = True
         self.use_memory: bool = True
+
+        #: Permission layer.  The provider decides the ``ASK`` branch; when it is
+        #: left unset the gate fails closed (deny) whenever it needs an answer.
+        self.approval_provider: Any = approval_provider
+        #: Permission memory shared with the session (and its subagents), so an
+        #: "allow this session" answer is not asked again by a child agent.
+        self.permission_memory: Any = permission_memory
+        #: A subagent inherits the parent's policy but may never ask questions:
+        #: its events do not reach the CLI, so an unanswered prompt would hang.
+        self.permission_isolated: bool = False
+        #: Extra permission ceiling applied on top of the config (subagents set
+        #: this to read-only, so a mis-configured child still cannot write).
+        self.permission_read_only: bool = False
 
     # -------------------------------------------------------------------- build
     def build(self) -> "AgentHarness":
@@ -143,7 +162,10 @@ class AgentHarness:
         self.subagent_registry.discover()
 
         # ---- memory --------------------------------------------------------
-        self.memory = build_memory_service(config)
+        # Subagents are context-isolated children.  When memory is disabled for
+        # a child, do not even construct the local Qdrant store: construction
+        # must not contend for the parent's on-disk memory lock.
+        self.memory = build_memory_service(config) if self.use_memory else None
 
         # ---- tools / skills visible to the main agent ----------------------
         enabled = [name for name in config.tools.enabled if name in set(self.tool_registry.names())]
@@ -158,9 +180,41 @@ class AgentHarness:
         self.tool_runtime = ToolRuntime(
             self.tool_registry,
             allowed=enabled,
+            permission_gate=None,  # wired below, once the permission stack exists
             max_output_chars=config.tools.max_output_chars,
             timeout_seconds=config.runtime.tool_timeout_seconds,
         )
+
+        # ---- permissions ---------------------------------------------------
+        # One gate per harness.  A subagent gets the parent's memory (so a
+        # session grant is not re-asked by a child) but never a prompt.
+        from harness.permission import AutoDenyProvider
+
+        approver = self.approval_provider
+        if approver is None and self.permission_isolated:
+            approver = AutoDenyProvider(
+                note="subagents run without an interactive approver"
+            )
+        if approver is None:
+            # No UI was wired up at all: fail closed rather than let an ASK
+            # verdict look like something that will eventually be answered.
+            approver = AutoDenyProvider(note="no approval UI is attached to this harness")
+        self.permission = build_permission_stack(
+            config,
+            workspace=self.workspace,
+            approver=approver,
+            persistent_path=str(config.approvals_path()),
+        )
+        if self.permission_memory is not None:
+            self.permission.gate.evaluator.memory = self.permission_memory
+            self.permission.memory = self.permission_memory
+        if self.permission_read_only:
+            self.permission.policy.read_only = True
+            self.permission.evaluator.policy.read_only = True
+        # The execution boundary enforces the same gate: a tool call that never
+        # reached the gate node is decided here instead of running unchecked.
+        self.tool_runtime.permission_gate = self.permission.gate
+
         native = native_tool_schemas(
             delegate_schema=subagent_runtime.tool_schema() if subagent_runtime.enabled else None,
             skills_available=config.skills.enabled and bool(self.skill_registry.names()),
@@ -232,6 +286,8 @@ class AgentHarness:
             tool_runtime=self.tool_runtime,
             skill_loader=self.skill_loader,
             subagent_runtime=self.subagent_runtime,
+            permission_gate=self.permission.gate if self.permission else None,
+            skill_tool_resolver=self._skill_tool_ceiling,
             termination_policy=TerminationPolicy(
                 max_iterations=(
                     config.subagents.max_iterations if subagent_mode else config.runtime.max_iterations
@@ -257,10 +313,25 @@ class AgentHarness:
         child = self._harness_factory(
             model_name=self.model_name,
             workspace_root=self.workspace.root,
-            on_event=self.on_event,
+            # A subagent is a context-isolated child tree.  Its internal
+            # iterations and tool events must not leak into the parent CLI;
+            # the parent delegate node emits only start/end summary events.
+            on_event=None,
             thread_id=f"sub-{spec.name}-{uuid.uuid4().hex[:6]}",
+            # Permission isolation: a child shares the session's remembered
+            # grants (so "allow this session" is not re-asked) but can never
+            # raise its own prompt - its events do not reach the user.
+            permission_memory=self.permission_memory
+            if self.permission_memory is not None
+            else (self.permission.memory if self.permission else None),
         )
-        child.system_prompt_override = SUBAGENT_PREAMBLE.format(name=spec.name, body=spec.body)
+        child.permission_isolated = True
+        child.permission_read_only = True
+        child.system_prompt_override = SUBAGENT_PREAMBLE.format(
+            name=spec.name,
+            body=spec.body,
+            max_iterations=self.config.subagents.max_iterations,
+        )
         child.tool_allowlist = allowed
         child.skill_allowlist = list(spec.skills)
         child.allow_delegation = False
@@ -272,6 +343,25 @@ class AgentHarness:
         callback = self.delta_callback
         if callback is not None:
             callback(delta)
+
+    def _skill_tool_ceiling(self, loaded: list[str]) -> tuple[list[str], str]:
+        """The tools the most recently loaded skill declares.
+
+        Design document section 12: a skill states which tools it relies on, and
+        that statement is a *ceiling*.  The newest loaded skill wins, because it is
+        the instructions the model is following right now.
+        """
+
+        if self.skill_registry is None:
+            return ([], "")
+        for name in reversed(list(loaded or [])):
+            try:
+                metadata = self.skill_registry.get(name)
+            except Exception:  # noqa: BLE001 - unknown skill: no ceiling
+                continue
+            if metadata.tools:
+                return (list(metadata.tools), metadata.name)
+        return ([], "")
 
     # -------------------------------------------------------------------- state
     def initial_state(self, task: str, *, thread_id: str | None = None, task_id: str | None = None) -> AgentState:
@@ -376,6 +466,7 @@ class AgentHarness:
             "tools": len(self.tool_runtime.visible_tools()) if self.tool_runtime else 0,
             "skills": len(self.skill_registry.names()) if self.skill_registry else 0,
             "subagents": self.subagent_registry.names() if self.subagent_registry else [],
+            "permissions": self.permission.describe() if self.permission else None,
         }
         if self.memory is not None:
             info["memory"] = await self.memory.status()

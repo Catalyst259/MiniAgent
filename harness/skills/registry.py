@@ -90,11 +90,15 @@ class SkillRegistry:
         keywords = front.get("keywords") or []
         if isinstance(keywords, str):
             keywords = [word.strip() for word in keywords.replace(",", " ").split() if word.strip()]
+        tools = front.get("tools") or []
+        if isinstance(tools, str):
+            tools = [item.strip().strip("[]") for item in tools.split(",") if item.strip()]
         return SkillMetadata(
             name=name,
             description=description,
             keywords=[str(word).lower() for word in keywords],
             path=str(skill_file),
+            tools=[str(item) for item in tools],
         )
 
     # ------------------------------------------------------------------- access

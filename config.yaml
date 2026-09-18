@@ -48,6 +48,93 @@ skills:
   paths: [skills]
 subagents:
   paths: [subagents]
+permissions:
+  # off  = no permission layer (historical behaviour)
+  # ask  = prompt for anything the rules do not cover
+  # auto = deny anything the rules do not cover (non-interactive runs)
+  mode: auto
+  default: ask
+  # Rules are most-restrictive-wins: a broad allow cannot hide a narrow ask.
+  rules:
+    # --- reading and inspecting the workspace is always fine -------------
+    - tool: list_dir
+      permission: allow
+    - tool: glob
+      permission: allow
+    - tool: grep
+      permission: allow
+    - tool: read_file
+      permission: allow
+    - tool: git_diff
+      permission: allow
+    - tool: load_skill
+      permission: allow
+    # Delegation is safe by construction: a subagent is clamped to the
+    # read-only tool ceiling and cannot ask for anything itself.
+    - tool: delegate
+      permission: allow
+    # --- changing the workspace needs consent ---------------------------
+    - tool: write_file
+      permission: ask
+    - tool: apply_patch
+      permission: ask
+    # --- git is allowed to look, asked to change ------------------------
+    - tool: shell
+      prefix: git status
+      permission: allow
+    - tool: shell
+      prefix: git diff
+      permission: allow
+    - tool: shell
+      prefix: git log
+      permission: allow
+    - tool: shell
+      prefix: ls
+      permission: allow
+    # --- everything else on the shell needs consent ---------------------
+    - tool: shell
+      permission: ask
+    # --- never has a legitimate reason to reach a shell -----------------
+    - tool: shell
+      program: rm
+      permission: deny
+    - tool: shell
+      program: sudo
+      permission: deny
+    - tool: shell
+      program: shutdown
+      permission: deny
+    - tool: shell
+      program: mkfs
+      permission: deny
+    - tool: shell
+      program: dd
+      permission: deny
+    # --- optional safety net for tools nobody enumerated above -----------
+    # Every action carries a risk level (low/medium/high; an unknown tool is
+    # medium, not "harmless"). A risk band applies only where no ordinary rule is
+    # *more* restrictive, and a risk `deny` is a hard floor over all of them.
+    #
+    # Uncomment to make any un-enumerated medium-or-worse action ask. Note that
+    # `shell` is high risk, so this also makes every shell command that the rules
+    # above do not explicitly allow ask - which is usually what you want in
+    # `mode: ask`, and redundant in `mode: auto`.
+    #
+    # - risk: medium
+    #   permission: ask
+  # denied outright, in every mode and for every approval scope
+  protected_paths:
+    - ".env"
+    - "**/.env"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/id_rsa*"
+    - "**/.ssh/**"
+    - "**/.aws/**"
+  # "Always allow" grants live outside the workspace: the agent can write
+  # inside the workspace and must not be able to edit its own permission store.
+  persistent: false
+  persistent_path: null
 checkpoint:
   path: .miniagent/checkpoints.sqlite
 logging:

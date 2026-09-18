@@ -87,6 +87,38 @@ class SkillsConfig(BaseModel):
     enabled: bool = True
 
 
+class PermissionsConfig(BaseModel):
+    """The permission layer (design document section 3).
+
+    ``mode`` decides what happens when no rule has an opinion:
+
+    * ``off``  - no permission layer at all (the historical behaviour),
+    * ``ask``  - ask the user (a headless run has no approver and fails closed),
+    * ``auto`` - deny, for non-interactive runs that must not block.
+
+    The sandbox (workspace escape, ``protected_paths``, ``denied_tools``) is
+    enforced in every mode and can never be overridden by a rule or an approval.
+    """
+
+    mode: str = "off"
+    #: fallback verdict for actions no rule matches: allow | ask | deny
+    default: str = "ask"
+    #: shorthand lists, equivalent to ``rules`` entries
+    allow: list[str] = Field(default_factory=list)
+    ask: list[str] = Field(default_factory=list)
+    deny: list[str] = Field(default_factory=list)
+    #: full rule objects: {tool, target, program, prefix, permission}
+    rules: list[Any] = Field(default_factory=list)
+    #: globs that are denied outright, in every mode
+    protected_paths: list[str] = Field(default_factory=list)
+    #: tools the agent may not use at all
+    denied_tools: list[str] = Field(default_factory=list)
+    #: remember "Always allow" across runs
+    persistent: bool = False
+    #: where those grants live; must be outside the workspace
+    persistent_path: str | None = None
+
+
 class SubAgentsConfig(BaseModel):
     paths: list[str] = Field(default_factory=lambda: ["subagents"])
     enabled: bool = True
@@ -120,6 +152,7 @@ class HarnessConfig(BaseModel):
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     subagents: SubAgentsConfig = Field(default_factory=SubAgentsConfig)
+    permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     checkpoint: CheckpointConfig = Field(default_factory=CheckpointConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     system_prompt_extra: str = ""
@@ -193,6 +226,18 @@ class HarnessConfig(BaseModel):
     def memory_path(self) -> Path:
         return self.resolve_path(self.memory.path)
 
+    def approvals_path(self) -> Path:
+        """Where "Always allow" grants are stored.
+
+        Defaults to ``~/.config/miniagent/approvals.json`` - deliberately outside
+        the workspace, because the agent can write inside the workspace and must
+        not be able to edit the file that decides what it may do.
+        """
+
+        from harness.permission.memory import DEFAULT_PERSISTENT_PATH
+
+        return self.resolve_path(self.permissions.persistent_path or DEFAULT_PERSISTENT_PATH)
+
     def describe(self) -> dict[str, Any]:
         model = self.resolve_model()
         return {
@@ -204,8 +249,28 @@ class HarnessConfig(BaseModel):
             "context_budget": self.context.max_input_tokens,
             "memory": f"{self.memory.backend} ({'on' if self.memory.enabled else 'off'})",
             "embedding": self.embedding.backend,
+            "permissions": (
+                f"{self.permissions.mode} ({len(self.permissions.rules)} rules, "
+                f"{len(self.permissions.allow) + len(self.permissions.ask) + len(self.permissions.deny)} shortcuts)"
+            ),
             "checkpoint": str(self.checkpoint_path) if self.checkpoint.enabled else "(off)",
         }
+
+
+#: Config paths whose value is a *word*, not a flag.  ``_coerce`` turns "off" into
+#: ``False`` because that is what ``enabled: off`` means, but
+#: ``permissions.mode: off`` is a mode name and must stay a string.
+_VERBATIM_PATHS: frozenset[tuple[str, ...]] = frozenset(
+    {
+        ("permissions", "mode"),
+        ("permissions", "default"),
+        ("tools", "transport"),
+        ("memory", "backend"),
+        ("embedding", "backend"),
+        ("logging", "level"),
+        ("default_model",),
+    }
+)
 
 
 def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
@@ -219,7 +284,8 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         # ``MINIAGENT_MOCK=1`` style variables are flags, not config paths.
         if len(path) == 1 and path[0] in ("mock", "debug", "verbose"):
             continue
-        _assign(merged, path, _coerce(raw_value))
+        value = raw_value if tuple(path) in _VERBATIM_PATHS else _coerce(raw_value)
+        _assign(merged, path, value)
     return merged
 
 
@@ -266,6 +332,7 @@ __all__ = [
     "EmbeddingConfig",
     "SkillsConfig",
     "SubAgentsConfig",
+    "PermissionsConfig",
     "CheckpointConfig",
     "LoggingConfig",
     "ENV_PREFIX",

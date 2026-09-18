@@ -189,6 +189,8 @@ def test_system_prompt_sections():
     for expected in ("## Environment", "## Relevant long-term memory", "## Available tools", "## Available skills", "## Available subagents", "## Loaded skill details", "/tmp/ws", "step 1", "explorer"):
         assert expected in prompt
     assert "broad repository analysis" in prompt
+    assert "exactly one planning-agent decision" in prompt
+    assert "PLAN_REQUIRED" in prompt and "PLAN_NOT_REQUIRED" in prompt
 
 
 def test_context_builder_exposes_iteration_budget():
@@ -203,6 +205,25 @@ def test_context_builder_exposes_iteration_budget():
     prompt = builder._system_prompt({"iteration": 7, "loaded_skills": []}, [])
     assert "40 iterations maximum" in prompt
     assert "each iteration may contain multiple tool calls" in prompt
+
+
+@pytest.mark.asyncio
+async def test_memory_lock_disables_memory_without_warning(caplog):
+    import logging
+
+    from harness.memory.embedding import HashingEmbeddingBackend
+    from harness.memory.service import MemoryService
+
+    class LockedStore:
+        async def ensure_ready(self, dimensions: int) -> None:
+            raise RuntimeError("Storage folder /tmp/memory is already accessed by another instance")
+
+    service = MemoryService(LockedStore(), HashingEmbeddingBackend(dimensions=8))
+    with caplog.at_level(logging.DEBUG):
+        await service.ensure_ready()
+
+    assert service.enabled is False
+    assert "memory disabled because the local Qdrant folder is busy" in caplog.text
 
 
 # ---------------------------------------------------------------------- skills
@@ -316,9 +337,34 @@ memory:
     assert config.checkpoint_path.parent.parent == tmp_path.resolve()
 
 
+def test_env_override_keeps_word_valued_settings_verbatim(monkeypatch, tmp_path):
+    """``off`` is a *mode name* for permissions.mode, not a boolean false.
+
+    Regression: ``MINIAGENT_PERMISSIONS__MODE=off`` was coerced to ``False`` and
+    the config failed to load, which quietly broke the documented way of choosing
+    a permission posture from the environment.
+    """
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("default_model: main\n", encoding="utf-8")
+    for mode in ("off", "ask", "auto"):
+        monkeypatch.setenv("MINIAGENT_PERMISSIONS__MODE", mode)
+        config = HarnessConfig.load(config_file)
+        assert config.permissions.mode == mode
+
+    monkeypatch.setenv("MINIAGENT_MEMORY__BACKEND", "memory")
+    monkeypatch.setenv("MINIAGENT_LOGGING__LEVEL", "DEBUG")
+    config = HarnessConfig.load(config_file)
+    assert config.memory.backend == "memory"
+    assert config.logging.level == "DEBUG"
+
+    # genuine booleans are still coerced
+    monkeypatch.setenv("MINIAGENT_MEMORY__ENABLED", "off")
+    assert HarnessConfig.load(config_file).memory.enabled is False
+
+
 def test_resolve_path_and_unknown_model(tmp_path):
     from harness.agent.errors import ConfigError
-
     config = HarnessConfig.load(None)
     config.base_dir = str(tmp_path)
     assert config.resolve_path("skills") == tmp_path / "skills"

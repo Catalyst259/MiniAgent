@@ -43,6 +43,7 @@ REQUIRED_COMMANDS = {
     "/tools",
     "/skills",
     "/agents",
+    "/permissions",
     "/compact",
     "/clear",
     "/exit",

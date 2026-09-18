@@ -204,7 +204,12 @@ def make_llm_node(gateway: ModelGateway, on_event: EventHandler | None = None):
             Event(
                 type="assistant_message",
                 message=message.content,
-                data={"iteration": iteration, "has_tool_calls": bool(message.tool_calls)},
+                data={
+                    "iteration": iteration,
+                    "has_tool_calls": bool(message.tool_calls),
+                    # the UI renders the chain of thought next to the answer
+                    "reasoning": message.reasoning,
+                },
             ),
         )
         for call in response.tool_calls:
@@ -219,6 +224,79 @@ def make_llm_node(gateway: ModelGateway, on_event: EventHandler | None = None):
         return update
 
     return llm
+
+
+# -------------------------------------------------------------------- permission
+def make_permission_node(
+    permission_gate: Any,
+    on_event: EventHandler | None = None,
+    skill_tools: Callable[[list[str]], tuple[list[str], str]] | None = None,
+) -> Callable[[AgentState], Awaitable[dict[str, Any]]]:
+    """Decide every pending call of the turn before anything is executed.
+
+    This node is why the permission layer is not a check buried inside each tool:
+    it is a real step of the loop, so a denial is visible in the transcript, a
+    prompt happens exactly once per call, and the execution node that follows has
+    nothing left to decide.
+    """
+
+    async def permission(state: AgentState) -> dict[str, Any]:
+        data = scratch()
+
+        # A loaded skill's declared tools are a ceiling, so it is applied before
+        # anything is evaluated.  Skills being loaded *in this same turn* count
+        # too: the model asked for them together with the calls they govern, and
+        # respecting only the previous turn's skill would let one message switch
+        # to a narrow skill and immediately use a tool outside it.
+        if skill_tools is not None:
+            pending_skills = [
+                str((call.arguments or {}).get("name") or "").strip()
+                for call in (data.get("pending_skills") or [])
+            ]
+            requested = [name for name in pending_skills if name]
+            loaded = list(state.get("loaded_skills") or [])
+            combined = [*loaded, *requested]
+            if combined:
+                tools, name = skill_tools(combined)
+                permission_gate.evaluator.policy.apply_skill_ceiling(tools, name)
+
+        calls = [
+            *(data.get("pending_skills") or []),
+            *(data.get("pending_delegates") or []),
+            *(data.get("pending_tools") or []),
+        ]
+        if not calls:
+            return {}
+
+        results = await permission_gate.check_batch(calls)
+
+        # Only the denied ids travel into the graph state: the scratch namespace
+        # is reset between turns, and the verdict objects are not checkpointable.
+        # The gate already emitted one permission_decision event per call, so the
+        # UI is not told twice.
+        data["permission"] = {
+            result.call.id: result.denial_message
+            for result in results
+            if result.denied
+        }
+        data["permission_results"] = results
+        # The act node hands these ids to the runtime, so the execution boundary
+        # does not ask the user the same question a second time.  It travels in the
+        # turn's scratch dict, not a ContextVar: LangGraph runs each node in its own
+        # task, so a ContextVar written here is invisible to the act node.
+        return {}
+
+    return permission
+
+
+def _permission_observation(call: ToolCall, reason: str) -> Observation:
+    return Observation(
+        tool_call_id=call.id,
+        tool_name=call.name,
+        ok=False,
+        content="",
+        error=reason,
+    )
 
 
 def _short_args(call: ToolCall, limit: int = 140) -> str:
@@ -256,8 +334,44 @@ def make_act_node(
         if not (pending or skill_calls or delegate_calls):
             return {}
 
-        # Announce every tool call before executing, so the UI shows timing.
-        for call in pending:
+        # order of execution follows the model's own ordering of the calls
+        order = {call.id: index for index, call in enumerate(
+            [*skill_calls, *delegate_calls, *pending]
+        )}
+        combined = sorted([*skill_calls, *delegate_calls, *pending], key=lambda c: order[c.id])
+
+        # The permission gate already decided every call of this turn (it runs as
+        # its own node).  A call the gate denied never reaches a tool: it becomes
+        # a permission observation, so the conversation still answers every
+        # tool_call_id and the model is told plainly that it was refused.
+        verdicts: dict[str, Any] = scratch().get("permission") or {}
+        #: ids the gate ruled on, so the runtime does not ask about them again
+        decided: list[str] = [
+            result.call.id for result in (scratch().get("permission_results") or [])
+        ]
+        allowed: list[ToolCall] = []
+        denied: list[tuple[ToolCall, str]] = []
+        for call in combined:
+            message = verdicts.get(call.id)
+            if message:
+                denied.append((call, str(message)))
+            else:
+                allowed.append(call)
+
+        for call, _reason in denied:
+            await _emit(
+                on_event,
+                Event(
+                    type="tool_denied",
+                    message=f"{call.name} denied by the permission layer",
+                    data={"tool": call.name, "id": call.id, "arguments": call.arguments},
+                ),
+            )
+
+        # Announce every permitted tool call before executing, so the UI shows timing.
+        for call in allowed:
+            if call.name in ("load_skill", "delegate"):
+                continue
             await _emit(
                 on_event,
                 Event(
@@ -273,13 +387,12 @@ def make_act_node(
         details = dict(state.get("skill_details") or {})
         history: list[dict[str, Any]] = []
 
-        # order of execution follows the model's own ordering of the calls
-        order = {call.id: index for index, call in enumerate(
-            [*skill_calls, *delegate_calls, *pending]
-        )}
-        combined = sorted([*skill_calls, *delegate_calls, *pending], key=lambda c: order[c.id])
+        for call, reason in denied:
+            observation = _permission_observation(call, reason)
+            observations.append(observation)
+            messages.append(observation.to_message())
 
-        for call in combined:
+        for call in allowed:
             if call.name == "load_skill":
                 observation, name = await _load_one_skill(call, skill_loader, details, on_event)
                 observations.append(observation)
@@ -298,8 +411,8 @@ def make_act_node(
                 continue
 
             # plain tools run concurrently (they are independent)
-            tool_calls = [call for call in combined if call.name not in ("load_skill", "delegate")]
-            tool_observations = await tool_runtime.run_many(tool_calls)
+            tool_calls = [call for call in allowed if call.name not in ("load_skill", "delegate")]
+            tool_observations = await tool_runtime.run_many(tool_calls, decided=decided)
             for observation in tool_observations:
                 await _emit(
                     on_event,

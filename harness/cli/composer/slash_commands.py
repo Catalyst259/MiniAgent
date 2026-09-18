@@ -131,6 +131,7 @@ def build_default_registry(handlers: dict[str, Handler]) -> CommandRegistry:
         ("tools", "list the tools available to the agent", False, ()),
         ("skills", "list skills, marking the loaded ones", False, ()),
         ("agents", "list the available subagents", False, ()),
+        ("permissions", "show or clear remembered permission grants", True, ("perms",)),
         ("compact", "compact the current context now", False, ()),
         ("clear", "start a new thread (clear the conversation)", False, ()),
         ("exit", "leave the CLI", False, ("quit", "q")),

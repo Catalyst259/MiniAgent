@@ -66,6 +66,27 @@ def translate(event: Event, state: AppState | None = None) -> ui.AgentEvent | No
             tool=str(data.get("tool") or ""),
             error=event.message,
         )
+    if kind == "tool_denied":
+        # The permission layer refused the call; the model sees a tool error, and
+        # so does the transcript.
+        return ui.ToolFailed(
+            call_id=str(data.get("id") or ""),
+            tool=str(data.get("tool") or ""),
+            error=event.message,
+        )
+    if kind == "permission_decision":
+        return ui.PermissionDecided(
+            call_id=str(data.get("id") or ""),
+            tool=str(data.get("tool") or ""),
+            permission=str(data.get("permission") or ""),
+            reason=str(data.get("reason") or event.message),
+            source=str(data.get("source") or ""),
+            approval=data.get("approval"),
+        )
+    if kind == "permission_ask":
+        # The question is rendered by the approval provider (status line + keys),
+        # not as a transcript cell; the decision that follows is the record.
+        return None
     if kind == "skill_load":
         return ui.SkillLoaded(name=str(data.get("skill") or event.message), ok=bool(data.get("ok", True)))
     if kind == "delegate_start":
@@ -83,7 +104,7 @@ def translate(event: Event, state: AppState | None = None) -> ui.AgentEvent | No
     if kind == "assistant_message":
         return ui.AssistantFinished(
             text=event.message,
-            reasoning=None,
+            reasoning=data.get("reasoning") or None,
             message_id=str(data.get("iteration") or ""),
         )
     if kind == "compact":

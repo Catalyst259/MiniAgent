@@ -112,10 +112,26 @@ class Compacted:
 
 @dataclass
 class ApprovalRequested:
-    """Reserved: approvals are not part of the first version."""
+    """A permission question is open (the question itself lives in the provider)."""
 
     tool: str
     arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PermissionDecided:
+    """The permission layer reached a verdict for one tool call."""
+
+    call_id: str = ""
+    tool: str = ""
+    permission: str = ""
+    reason: str = ""
+    source: str = ""
+    approval: str | None = None
+
+    @property
+    def allowed(self) -> bool:
+        return self.permission == "allow"
 
 
 @dataclass
@@ -147,6 +163,7 @@ AgentEvent = Union[
     ContextUsage,
     Compacted,
     ApprovalRequested,
+    PermissionDecided,
     ErrorEvent,
     TurnFinished,
 ]

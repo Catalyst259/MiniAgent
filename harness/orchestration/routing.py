@@ -15,6 +15,7 @@ NODE_CONTEXT = "build_context"
 NODE_TOKEN_GUARD = "token_guard"
 NODE_COMPACT = "compact"
 NODE_LLM = "llm"
+NODE_PERMISSION = "permission"
 NODE_TOOLS = "tools"
 NODE_ACT = "act"
 NODE_SKILLS = "skills"
@@ -66,11 +67,12 @@ def after_token_guard(state: AgentState) -> str:
 
 
 def after_llm(state: AgentState, policy: TerminationPolicy) -> str:
-    """Termination first, otherwise hand *all* pending calls to the act node.
+    """Termination first, otherwise hand *all* pending calls to the gate.
 
     Sending the whole set to one node is what keeps the conversation valid: every
     ``tool_call_id`` must be answered, even when one message mixes skills,
-    delegation and plain tools.
+    delegation and plain tools.  The permission gate sits between the model and
+    execution so no call can be dispatched without a verdict.
     """
 
     decision = policy.check(state)
@@ -79,8 +81,23 @@ def after_llm(state: AgentState, policy: TerminationPolicy) -> str:
 
     messages = list(state.get("messages") or [])
     if pending_skill_calls(messages) or pending_delegate_calls(messages) or pending_tool_calls(messages):
-        return NODE_ACT
+        return NODE_PERMISSION
     # Assistant produced neither text nor tool calls: treat as an implicit stop.
+    return NODE_TERMINATE
+
+
+def after_gate(state: AgentState) -> str:
+    """Every call has a verdict by now; the act node executes the allowed ones."""
+
+    from harness.orchestration.nodes import scratch
+
+    data = scratch()
+    if (
+        data.get("pending_tools")
+        or data.get("pending_skills")
+        or data.get("pending_delegates")
+    ):
+        return NODE_ACT
     return NODE_TERMINATE
 
 
@@ -104,6 +121,7 @@ __all__ = [
     "NODE_TOKEN_GUARD",
     "NODE_COMPACT",
     "NODE_LLM",
+    "NODE_PERMISSION",
     "NODE_TOOLS",
     "NODE_ACT",
     "NODE_SKILLS",
@@ -112,6 +130,7 @@ __all__ = [
     "ROUTE_END",
     "after_token_guard",
     "after_llm",
+    "after_gate",
     "after_side_effect",
     "last_assistant",
     "pending_tool_calls",

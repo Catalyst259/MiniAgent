@@ -219,6 +219,10 @@ class SkillMetadata(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     path: str
     source: str = "filesystem"
+    #: Tools the skill declares it needs.  Empty means "no declared ceiling", so a
+    #: skill can never *widen* what the agent may do - see
+    #: :class:`harness.permission.policy.PermissionPolicy`.
+    tools: list[str] = Field(default_factory=list)
 
 
 class ToolSpec(BaseModel):

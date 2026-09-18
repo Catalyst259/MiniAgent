@@ -1,0 +1,159 @@
+{
+  "name": "fix_verify",
+  "mode": "headless-vt100-capture",
+  "rows_rows_note": "terminal size used for Vt100_Output.get_size()",
+  "rows": 24,
+  "cols": 100,
+  "total_bytes": 17871,
+  "probe_wall_seconds": 8.417,
+  "marks": [
+    {
+      "label": "banner",
+      "at": 0.6726,
+      "offset": 12
+    },
+    {
+      "label": "wait_for:'›':ok",
+      "at": 0.7091,
+      "offset": 248
+    },
+    {
+      "label": "turn_start:'hi'",
+      "at": 1.2099,
+      "offset": 248
+    },
+    {
+      "label": "turn_end:'hi'",
+      "at": 1.2333,
+      "offset": 1035
+    },
+    {
+      "label": "turn_start:'hi again'",
+      "at": 1.2333,
+      "offset": 1035
+    },
+    {
+      "label": "turn_end:'hi again'",
+      "at": 1.2514,
+      "offset": 2295
+    },
+    {
+      "label": "turn_start:'one more'",
+      "at": 1.2515,
+      "offset": 2295
+    },
+    {
+      "label": "turn_end:'one more'",
+      "at": 1.2767,
+      "offset": 5909
+    },
+    {
+      "label": "turn_start:'last one'",
+      "at": 1.2767,
+      "offset": 5909
+    },
+    {
+      "label": "turn_end:'last one'",
+      "at": 1.2912,
+      "offset": 7570
+    },
+    {
+      "label": "snapshot:bottom",
+      "at": 2.0921,
+      "offset": 9380
+    },
+    {
+      "label": "send:'PageUp'",
+      "at": 2.0922,
+      "offset": 9380
+    },
+    {
+      "label": "snapshot:after_pageup1",
+      "at": 2.6927,
+      "offset": 10950
+    },
+    {
+      "label": "send:'PageUp2'",
+      "at": 2.6928,
+      "offset": 10950
+    },
+    {
+      "label": "snapshot:after_pageup2",
+      "at": 3.2936,
+      "offset": 10982
+    },
+    {
+      "label": "send:'SGR_wheel_up'",
+      "at": 3.2937,
+      "offset": 10982
+    },
+    {
+      "label": "snapshot:after_wheelup",
+      "at": 3.8941,
+      "offset": 11014
+    },
+    {
+      "label": "send:'SGR_wheel_down'",
+      "at": 3.8941,
+      "offset": 11014
+    },
+    {
+      "label": "snapshot:after_wheeldown",
+      "at": 4.4945,
+      "offset": 12741
+    },
+    {
+      "label": "send:'CtrlEnd'",
+      "at": 4.4945,
+      "offset": 12741
+    },
+    {
+      "label": "snapshot:after_ctrlend",
+      "at": 5.0953,
+      "offset": 14852
+    },
+    {
+      "label": "idle_measured",
+      "at": 7.6067,
+      "offset": 14852
+    },
+    {
+      "label": "quit",
+      "at": 8.2096,
+      "offset": 17871
+    },
+    {
+      "label": "END",
+      "at": 8.4116,
+      "offset": 17871
+    }
+  ],
+  "idle": {
+    "window_label": "snapshot:after_ctrlend -> idle_measured",
+    "seconds": 2.511,
+    "bytes": 0,
+    "bytes_per_second": 0.0
+  },
+  "writes": {
+    "total_write_calls": 13526,
+    "tail_4s_write_calls": 3943,
+    "tail_4s_writes_per_second": 985.75,
+    "tail_4s_max_gap_seconds": 3.4094,
+    "run_max_gap_seconds": 3.4094,
+    "run_write_calls_per_second": 1608.02
+  },
+  "cpr_queries": 0,
+  "final_scrollback_len": 1,
+  "modes": {
+    "12": false,
+    "25": true,
+    "2004": false,
+    "1": false,
+    "1000": false,
+    "1003": false,
+    "1015": false,
+    "1006": false,
+    "7": true
+  },
+  "hard_timeout": 70.0
+}

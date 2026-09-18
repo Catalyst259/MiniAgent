@@ -131,7 +131,8 @@ async def test_slash_completer_is_a_real_prompt_toolkit_completer():
             Document("/mo", 3), CompleteEvent()
         )
     ]
-    assert [completion.text for completion in completions] == ["/model"]
+    # "/mo" is a fuzzy subsequence of "/permissions" too, so both appear
+    assert [completion.text for completion in completions] == ["/model", "/permissions"]
 
 
 async def test_slash_completer_swallows_registry_errors():
@@ -183,7 +184,10 @@ async def test_prompt_session_runs_with_complete_while_typing(app):
         pipe.send_bytes(b"/mo")  # this is what used to raise inside the loop
         await asyncio.sleep(0.4)
         state = session.default_buffer.complete_state
-        assert state is not None and [c.text for c in state.completions] == ["/model"]
+        assert state is not None and [c.text for c in state.completions] == [
+            "/model",
+            "/permissions",
+        ]
         task.cancel()
         try:
             await task

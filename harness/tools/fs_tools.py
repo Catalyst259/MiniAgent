@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from harness.agent.errors import PatchError, ToolError
+from harness.agent.errors import PatchError, ToolError, ToolPermissionError
 from harness.tools import patch as patch_mod
 from harness.tools.paths import Workspace, is_skipped_dir
 
@@ -176,7 +176,12 @@ def list_dir(ctx: ToolContext, path: str = ".", depth: int = 1, show_hidden: boo
 
 # ------------------------------------------------------------------------ glob
 def glob(ctx: ToolContext, pattern: str, path: str = ".", max_results: int = 200) -> str:
-    """Find files whose path matches a glob pattern (``**/*.py``, ``src/*/test_*.py``)."""
+    """Find files whose path matches a glob pattern (``**/*.py``, ``src/*/test_*.py``).
+
+    The pattern is always relative to the workspace: an absolute pattern would be
+    a second way out of the sandbox that the ``path`` guard never sees, so it is
+    resolved against the workspace root instead of the filesystem root.
+    """
 
     base = ctx.workspace.resolve(path, must_exist=True)
     if base.is_file():
@@ -187,9 +192,19 @@ def glob(ctx: ToolContext, pattern: str, path: str = ".", max_results: int = 200
     truncated = False
 
     if os.path.isabs(pattern):
-        candidates: Iterable[Path] = Path("/").glob(pattern.lstrip("/"))
-    else:
-        candidates = base.glob(pattern)
+        # Treat "/etc/*.conf" as "etc/*.conf" inside the workspace: harmless when
+        # the workspace has no such directory, and never a filesystem walk.
+        stripped = pattern.lstrip("/")
+        if ".." in Path(stripped).parts:
+            raise ToolPermissionError(
+                f"glob pattern `{pattern}` is absolute and points outside the workspace"
+            )
+        pattern = stripped or "**/*"
+    if ".." in Path(pattern).parts:
+        raise ToolPermissionError(
+            f"glob pattern `{pattern}` escapes the workspace root `{ctx.workspace.root}`"
+        )
+    candidates: Iterable[Path] = base.glob(pattern)
 
     for candidate in candidates:
         if candidate.is_dir():
@@ -210,6 +225,24 @@ def glob(ctx: ToolContext, pattern: str, path: str = ".", max_results: int = 200
 
 
 # ------------------------------------------------------------------------ grep
+def _inside(base: Path, candidate: Path) -> bool:
+    """Whether ``candidate`` is under ``base`` *after resolving symlinks*.
+
+    A plain string prefix test is not enough: a symlink inside the workspace
+    keeps its in-workspace path while pointing anywhere, so ``grep`` would read
+    (and print) files the workspace guard exists to protect.
+    """
+
+    try:
+        resolved_base = base.resolve()
+        resolved = candidate.resolve()
+    except OSError:  # pragma: no cover - unreadable path
+        return False
+    if resolved_base.is_file():
+        return resolved == resolved_base
+    return resolved == resolved_base or resolved_base in resolved.parents
+
+
 def grep(
     ctx: ToolContext,
     pattern: str,
@@ -245,7 +278,7 @@ def grep(
         files = [base]
     else:
         for candidate in ctx.workspace.walk():
-            if not str(candidate).startswith(str(base)):
+            if not _inside(base, candidate):
                 continue
             if glob and not (
                 fnmatch.fnmatch(candidate.name, glob) or fnmatch.fnmatch(str(candidate), glob)

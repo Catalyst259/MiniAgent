@@ -195,13 +195,17 @@ class AppState:
     composer: TextAreaState = field(default_factory=TextAreaState)
     command_popup: CommandPopupState = field(default_factory=CommandPopupState)
     history_cells: list[HistoryCell] = field(default_factory=list)
+    #: cells whose collapsed body/reasoning block is expanded (see ``expand_key``)
     expanded_tool_ids: set[str] = field(default_factory=set)
     activity: str = ""
-    transcript_scroll: int | None = None
     active_cell: HistoryCell | None = None
     assistant_stream: StreamState | None = None
     dirty: bool = True
     on_change: Callable[[], None] | None = None
+    #: the approval question currently on screen, if any (see
+    #: :class:`harness.cli.approval.PendingApproval`).  Kept here so the renderer
+    #: and the key bindings read one source of truth.
+    approval: Any = None
     #: the previously running cell, kept only for debugging/telemetry
     _stale_active: HistoryCell | None = None
 
@@ -238,19 +242,38 @@ class AppState:
         self.history_cells.append(cell)
         self.touch()
 
-    def toggle_latest_tool(self) -> None:
-        """Toggle the newest completed tool's detailed terminal preview."""
+    def toggle_latest_expandable(self) -> None:
+        """Expand/collapse the newest cell that has collapsible content.
 
-        from harness.cli.cells import ToolCell
+        That is the newest completed tool body, delegated subagent report, or
+        assistant chain of thought.  (Historically this only knew about tools;
+        the key is now :func:`harness.cli.cells.base.expand_key`.)
+        """
+
+        from harness.cli.cells import AssistantCell, SubAgentCell, ToolCell
+        from harness.cli.cells.base import expand_key
 
         for cell in reversed(self.history_cells):
-            if isinstance(cell, ToolCell) and cell.status.value != "running":
-                if cell.call_id in self.expanded_tool_ids:
-                    self.expanded_tool_ids.remove(cell.call_id)
-                else:
-                    self.expanded_tool_ids.add(cell.call_id)
-                self.touch()
-                return
+            expandable = False
+            if isinstance(cell, ToolCell):
+                expandable = cell.status.value != "running" and bool(cell.body_lines())
+            elif isinstance(cell, SubAgentCell):
+                expandable = bool(cell.summary)
+            elif isinstance(cell, AssistantCell):
+                expandable = bool((cell.reasoning or "").strip())
+            if not expandable:
+                continue
+            key = expand_key(cell)
+            if key in self.expanded_tool_ids:
+                self.expanded_tool_ids.discard(key)
+            else:
+                self.expanded_tool_ids.add(key)
+            self.touch()
+            return
+
+    #: backwards-compatible name (older call sites/tests)
+    def toggle_latest_tool(self) -> None:
+        self.toggle_latest_expandable()
 
     def touch(self) -> None:
         self.dirty = True

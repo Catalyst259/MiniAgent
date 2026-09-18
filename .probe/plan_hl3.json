@@ -1,0 +1,23 @@
+{
+  "name": "hl3_keys",
+  "rows": 24,
+  "cols": 100,
+  "idle_window": 3.0,
+  "hard_timeout": 45.0,
+  "actions": [
+    {"type": "wait_for", "pattern": "\u203a"},
+    {"type": "sleep", "seconds": 0.4},
+    {"type": "run_turn", "text": "hi"},
+    {"type": "sleep", "delay": 1.2, "seconds": 3.0},
+    {"type": "snapshot", "label": "A_before_keys"},
+    {"type": "send", "data": "\u001b[<64;10;5M", "label": "wheel_up_sgr"},
+    {"type": "snapshot", "label": "B_after_wheel", "delay": 1.2},
+    {"type": "send", "data": "\u001b[5~", "label": "PageUp"},
+    {"type": "snapshot", "label": "C_after_pageup", "delay": 1.2},
+    {"type": "send", "data": "\u001b[6~", "label": "PageDown"},
+    {"type": "snapshot", "label": "D_after_pagedown", "delay": 1.2},
+    {"type": "send", "data": "\u001b[F", "label": "End"},
+    {"type": "snapshot", "label": "E_after_end", "delay": 1.2},
+    {"type": "quit", "delay": 0.3}
+  ]
+}

@@ -49,7 +49,10 @@ class MemoryService:
             # disable memory for this session and carry on without it.
             self._last_error = f"{type(exc).__name__}: {exc}"
             self.enabled = False
-            log.warning("memory disabled: %s", self._last_error)
+            if "Storage folder" in str(exc) and "already accessed" in str(exc):
+                log.debug("memory disabled because the local Qdrant folder is busy: %s", self._last_error)
+            else:
+                log.warning("memory disabled: %s", self._last_error)
             return
         self._ready = True
 

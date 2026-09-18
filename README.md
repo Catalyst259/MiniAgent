@@ -30,6 +30,7 @@ MiniAgent.
 | Qdrant long-term memory | Embedded Qdrant for durable cross-task facts, with a pluggable embedding backend. |
 | Filesystem skills | `SKILL.md` files discovered on disk; only metadata is injected until `load_skill` is called. |
 | Context builder / compact | Deterministic prompt assembly within a token budget, plus compaction when the budget gets tight. |
+| Permission layer | One gate between the model and execution: sandbox, allow/ask/deny rules, approval memory, and a prompt for anything not already decided. See `PERMISSIONS.md`. |
 | Termination guard | Stops the loop on final answer, iteration cap, repeated tool calls, fatal errors or tool failures. |
 | Subagents | `Planner` and `Explorer` run as separate graphs with their own context and a read-only tool ceiling. |
 
@@ -126,11 +127,56 @@ All file paths are confined to the workspace root; escapes (`..`, absolute paths
 are rejected. `apply_patch` matches exactly first, then tolerates whitespace differences,
 and leaves a file untouched if any hunk fails to apply.
 
+## Permissions
+
+Every tool call passes a permission layer before it runs, whatever the front end:
+the model's tools, a subagent's tools, and your own `!command` shell intents.
+
+```text
+ToolCall -> Action -> [ sandbox | policy rules | memory ] -> ALLOW / DENY / ASK
+                                       ASK -> prompt -> execute or refuse
+```
+
+- **`mode`** decides what happens when no rule has an opinion: `off` (no rules),
+  `ask` (prompt), or `auto` (deny). The shipped `config.yaml` sets `auto`, so a
+  non-interactive run refuses a write instead of blocking on a prompt. Note that
+  `off` switches off the *rules*, not the sandbox below.
+- **Rules** are `allow` / `ask` / `deny` statements, resolved most-specific-first:
+  a blanket `shell: ask` plus `shell prefix="git status": allow` lets `git status`
+  run and asks about everything else. Rules can also constrain by `risk`
+  (`low`/`medium`/`high`), where an unclassified tool counts as `medium` — a safety
+  net for tools nobody wrote a rule for.
+- **The sandbox cannot be overridden** — not by a rule, not by an approval, and
+  not by `mode: off`. It covers workspace escapes, `protected_paths` (`.env`,
+  keys, `.ssh`), `denied_tools`, the read-only ceiling of subagents, and the tool
+  ceiling a loaded skill declares.
+- **The sandbox inspects side effects, not the argument a rule matched on**: an
+  `apply_patch` move destination, a shell command's `--output` path, `grep`'s
+  `glob` filter and `glob`'s `pattern` are all checked like file targets.
+- **Enforcement is doubled**: the `permission` graph node decides a whole turn
+  (so the user is asked once per call and the transcript shows why), and
+  `ToolRuntime.run` re-checks anything that did not come through it.
+- **Shell prefix rules are parsed, not string-matched**: `npm install x; rm -rf ~`,
+  `env npm …` and `git status -c core.pager=evil` do not satisfy a rule for `npm`
+  or `git status`.
+- **Approvals are remembered** as "allow once" (nothing stored), "allow this
+  session" (shared with subagents), or "always allow" (stored in
+  `~/.config/miniagent/approvals.json` — deliberately *outside* the workspace, so
+  the agent cannot edit its own rules).
+
+`PERMISSIONS.md` documents the full model, the config reference and the security
+decisions. `/permissions` shows the current posture and grants; `/permissions clear`
+drops the session grants.
+
 ## Skills
 
 Skills live in `skills/<name>/SKILL.md` with YAML front matter (`name`, `description`,
 `keywords`). Startup loads metadata only; the agent reads a body with `load_skill` and the
 instructions then stay in context for the rest of the task.
+
+A skill may also declare `tools:` — the tools it relies on. That list is a *ceiling* for
+the rest of the task, never a grant: loading a skill cannot make a tool reachable that the
+permission policy would otherwise refuse (see `PERMISSIONS.md`).
 
 | Skill | Use it when |
 | --- | --- |
@@ -145,14 +191,15 @@ instructions then stay in context for the rest of the task.
 `description`, `tools`, `skills`). The main agent calls `delegate`; the subagent runs with
 its own state and context - the parent transcript is never copied in - and returns a
 compact report.
-
 | Subagent | Role | Tools |
 | --- | --- | --- |
 | `planner` | Breaks a complex task into an ordered, verifiable plan. | `list_dir`, `glob`, `grep`, `read_file`, `git_diff` |
 | `explorer` | Finds relevant code and reports files, symbols and call relationships. | `list_dir`, `glob`, `grep`, `read_file` |
 
 Neither can write, and `explorer` has no `shell` at all: the tool list in `AGENT.md` is the
-isolation boundary and is clamped to a read-only ceiling by the harness.
+isolation boundary and is clamped to a read-only ceiling by the harness. A subagent also
+runs with an auto-deny approver - its events never reach the CLI, so a permission prompt
+could never be answered - while still sharing the session's remembered grants.
 
 ## The CLI
 
@@ -167,15 +214,19 @@ UserIntent -> Agent Runtime -> AgentEvent -> AppState -> Renderer
 | Piece | Behaviour |
 | --- | --- |
 | **Composer** | A real editable buffer (`text` + `cursor`) via prompt_toolkit: insert, Backspace/Delete, Left/Right, Home/End, word-delete (Ctrl+W), multiline (Esc+Enter), paste, history. |
+| **Transcript viewport** | The transcript is a scrollable pane with a scrollbar, so the newest line stays visible while the history stays reachable: the **mouse wheel** scrolls three lines per notch, **PageUp/PageDown** page by exactly one screen, **Ctrl+Home/Ctrl+End** jump to the oldest/newest line. At the bottom the view follows the stream; scrolling up pins it (the status line then shows `↑ N line(s) above the latest`) and new output no longer drags the view back down. Enabling the wheel means the terminal reports mouse events — use Shift+drag (or your terminal's selection modifier) to select text. |
+| **Expandable cells** | **Ctrl+O** expands/collapses the newest collapsible block: a tool's full output (bounded to 400 lines so a huge dump cannot freeze the renderer), a subagent report, or the chain of thought. Collapsed blocks show their first lines plus `… N more line(s)`. |
+| **Chain of thought** | Reasoning returned by the provider (`reasoning_content`/`reasoning`) is rendered as a dim `∴ thinking` block above the answer, collapsed to six lines and expandable with Ctrl+O. It never enters the model context. |
 | **Slash popup** | Typing `/` shows a fuzzy-filtered command list above the prompt. The popup owns *navigation* only (↑/↓ move the selection, Tab accepts, Esc dismisses); the composer always owns the text, and the popup re-filters on every keystroke. |
 | **Fuzzy match** | Codex-style case-insensitive subsequence matcher: window-size score with a bonus for matching from the start, matched characters highlighted. `/mdl` finds `/model`. |
 | **Cell lifecycle** | Events address an *entity*, they never create one: `AssistantStarted` creates the message cell, `AssistantDelta` updates it, `assistant_message`/`AssistantFinished` only mark it complete; `ToolStarted` and `ToolFinished` update the same `ToolCell` by `call_id`. Nothing is appended twice, so an answer is rendered exactly once and one call shows one pending + one finished line. |
-| **Assistant streaming** | Raw Markdown is accumulated and split at the last newline into a **stable** region and a **mutable tail**. Finished lines are written once, each on its own row; only the last, still-changing line is redrawn in place (throttled). The finished answer is then rendered once from the full source, so partial Markdown (`**hel` + `lo**`) never renders wrong, and it never runs into the streamed text. |
+| **Assistant streaming** | Raw Markdown is accumulated and split at the last newline into a **stable** region and a **mutable tail**. Finished lines are written once, each on its own row; only the last, still-changing line is redrawn in place (throttled). When the message finishes the preview rows are erased and the answer is rendered once from the full source, so partial Markdown (`**hel` + `lo**`) never renders wrong and never appears twice. The interactive transcript does the same thing per cell: complete lines are Markdown, the still-changing tail is plain text (an unterminated code fence can no longer swallow the rest of the answer). |
 | **Final answer** | When a turn ends the live region is erased and the answer is printed under a `── final answer ──` banner (or `── final answer (stopped: <reason>) ──`), so it is unmistakable which text is the result. |
-| **Tool trace** | Every call is announced as it starts (`● read_file  {"path": …} …`), its result follows when it finishes, and skills (`◆ loaded skill testing`), delegations (`⇢ explorer …` plus the subagent's structured report) are traced the same way. Routing goes through one `act` node that executes *all* calls of a turn, so every `tool_call_id` is answered. |
+| **Tool trace** | Every call is announced as it starts (`◐ read_file  {"path": …} …` with its arguments), a running tool streams the tail of its output, and the finished cell shows the body preview plus the elapsed time (`(42 ms)`). Skills (`◆ loaded skill testing`), delegations (`⇢ explorer …` plus the subagent's structured report) are traced the same way. Routing goes through one `act` node that executes *all* calls of a turn, so every `tool_call_id` is answered. |
+| **Command output** | Slash-command output (`/help`, `/status`, `/tools`, …) is appended to the transcript as cells, so it scrolls, expands and clears like everything else instead of being printed above the application region. |
 | **Output sanitising** | Tool output is arbitrary text: ANSI codes, control characters and tabs are stripped/normalised before printing, so a colour code can never show up as `[0m` garbage. |
 | **Light Markdown** | Rich's defaults paint code blocks with `bgcolor="black"`; MiniAgent overrides that theme so code gets a colour but **no background fill**, keeping the transcript light instead of a full-width dark bar. |
-| **Tool cells** | A tool renders as one cell that flips from `● running` to `● done` / `✗ failed` in place, with a bounded output preview and timing. |
+| **Tool cells** | A tool renders as one cell that flips from `◐ running` to `● done` / `✗ failed` in place (shape, not only colour, tells them apart), with a bounded output preview and timing. |
 | **History cells** | History is a list of typed cells (`UserCell`, `AssistantCell`, `ToolCell`, `SubAgentCell`, `SkillCell`, `ErrorCell`, `InfoCell`), not strings, so the renderer has no `elif event.type` chain. |
 | **Committed vs active** | The running cell is the *active cell* and is committed to history when it finishes. |
 | **Shell intent** | `!command` is not run by the UI: the composer produces a `ShellIntent` and the runtime executes it through the same sandboxed `shell` tool the model uses. |
@@ -201,6 +252,7 @@ skips in-place updates so logs stay clean.
 | `/tools` | List the tools available to the agent. |
 | `/skills` | List skills, marking the loaded ones. |
 | `/agents` | List the subagents and their tools. |
+| `/permissions` | Show the permission posture, rules and remembered grants (`/permissions clear` drops the session grants). |
 | `/compact` | Compact the current context now (Summary is separate: it runs at task end). |
 | `/clear` | Clear the conversation and start a new thread. |
 | `/exit` | Exit the CLI (`/quit` and `/q` are aliases). |
@@ -244,9 +296,10 @@ input instead of keystrokes, so the CLI can be demonstrated without a terminal:
 root. The suite covers the tool layer (including `apply_patch` dialects), the agent loop
 end to end, the termination guard, compaction, memory formation and recall, skills,
 subagents and their tool isolation, MCP server/client round trips, SQLite checkpoints,
-config overrides, the CLI (fuzzy matcher, popup derivation, composer editing, cells,
-stable/tail streaming, event bridge, slash commands, shell intent) and subprocess-level
-runs of the real binary.
+config overrides, the permission layer (actions, shell parsing, rules, sandbox, grants,
+approval keys, skill ceilings), the CLI (fuzzy matcher, popup derivation, composer
+editing, cells, stable/tail streaming, event bridge, slash commands, shell intent) and
+subprocess-level runs of the real binary.
 
 Note: tests that spawn a pseudo-terminal are intentionally absent - the sandbox cannot
 allocate one - so the interactive prompt is covered through prompt_toolkit's own frame and
@@ -263,6 +316,7 @@ harness/
   context/        # context builder, token budget, compaction, prompts
   inference/      # ModelGateway protocol, OpenAI-compatible + mock gateways, streaming, tokenizer
   tools/          # 8 tools, patch engine, MCP server, MCP client, registry, runtime
+  permission/     # action parsing, sandbox/rules policy, grants, evaluator, gate
   skills/         # skill registry and progressive-disclosure loader
   subagents/      # subagent registry and delegation runtime
   memory/         # embedding backends, memory stores (Qdrant/in-memory), summary service
@@ -273,13 +327,14 @@ harness/
     state.py      # AppState, TextAreaState, CommandPopupState, StreamState
     events_bridge.py  # runtime events -> UI events
     shell_intent.py   # `!command` as an intent executed by the runtime
+    approval.py   # interactive (future + keys) and plain (stdin) approvers
     composer/     # composer, slash_commands registry, fuzzy_match, command_popup
     cells/        # base + user/assistant/tool/subagent/error cells
     streaming/    # assistant_stream (stable/tail), tool_stream
     render/       # renderer, theme, legacy plain/rich renderers
 skills/           # 4 skills (repo_exploration, debugging, testing, code_review)
 subagents/        # 2 subagents (planner, explorer)
-config.yaml       # models, budgets, tools, memory, skills, subagents
+config.yaml       # models, budgets, tools, permissions, memory, skills, subagents
 requirements.txt  # runtime + test dependencies
 miniagent.sh      # launcher (run.sh is a wrapper)
 scripts/          # demo_cli.py: scripted, terminal-free CLI demo

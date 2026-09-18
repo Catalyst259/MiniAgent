@@ -165,6 +165,7 @@ def build_key_bindings(
     on_submit=None,
     on_toggle_tool=None,
     on_history_scroll=None,
+    approval=None,
 ):
     """Key routing: popup owns navigation, the text area owns editing.
 
@@ -176,6 +177,11 @@ def build_key_bindings(
     Ctrl+C clears the current line; on an already empty line it raises
     ``KeyboardInterrupt`` out of the prompt so the caller can count consecutive
     interrupts and quit.
+
+    ``approval`` is a :class:`~harness.cli.approval.InteractiveApprovalProvider`.
+    While a permission question is open its keys take priority over the buffer,
+    which is why they carry an ``approval_pending`` filter: without it, typing a
+    "2" in the middle of a sentence would answer a question the user never saw.
     """
 
     from prompt_toolkit.application.current import get_app
@@ -183,6 +189,7 @@ def build_key_bindings(
     from prompt_toolkit.key_binding import KeyBindings
 
     popup_visible = Condition(lambda: bool(composer.popup and composer.popup.visible))
+    approval_pending = Condition(lambda: bool(approval is not None and approval.waiting))
     kb = KeyBindings()
 
     def _refill(buffer, text: str) -> None:
@@ -223,6 +230,38 @@ def build_key_bindings(
         if composer.popup and composer.popup.visible:
             composer.popup.dismiss()
 
+    # ------------------------------------------------------- permission prompt
+    # Carries its own filter, so these bindings only exist while a question is
+    # open.  Digits are safe to capture then: the question is modal, and the
+    # composer keeps whatever the user had typed.
+    if approval is not None:
+        from harness.cli.approval import CHOICE_KEYS
+
+        def _choice_for(scope: str):
+            def _choice(event) -> None:  # noqa: ANN001
+                approval.resolve(scope)
+
+            return _choice
+
+        for key, scope in CHOICE_KEYS.items():
+            kb.add(key, filter=approval_pending)(_choice_for(scope))
+
+        @kb.add("left", filter=approval_pending)
+        def _approval_left(event) -> None:  # noqa: ANN001
+            approval.move(-1)
+
+        @kb.add("right", filter=approval_pending)
+        def _approval_right(event) -> None:  # noqa: ANN001
+            approval.move(1)
+
+        @kb.add("enter", filter=approval_pending)
+        def _approval_accept(event) -> None:  # noqa: ANN001
+            approval.accept_selection()
+
+        @kb.add("c-r", filter=approval_pending)
+        def _approval_reject(event) -> None:  # noqa: ANN001
+            approval.reject()
+
     @kb.add("c-c")
     def _interrupt(event) -> None:  # noqa: ANN001
         buffer = event.current_buffer
@@ -250,19 +289,52 @@ def build_key_bindings(
     @kb.add("pageup")
     def _history_up(event) -> None:  # noqa: ANN001
         if on_history_scroll is not None:
-            on_history_scroll(-1)
+            on_history_scroll("page-up")
 
     @kb.add("pagedown")
     def _history_down(event) -> None:  # noqa: ANN001
         if on_history_scroll is not None:
-            on_history_scroll(1)
+            on_history_scroll("page-down")
 
-    @kb.add("end")
-    def _history_end(event) -> None:  # noqa: ANN001
+    # Ctrl+Home / Ctrl+End, not plain Home/End: the plain keys belong to the
+    # input line (README documents them as composer keys), and binding them
+    # globally stole "end of line" from the buffer.
+    @kb.add("c-home")
+    def _history_top(event) -> None:  # noqa: ANN001
         if on_history_scroll is not None:
-            on_history_scroll(0)
+            on_history_scroll("top")
 
-    @kb.add("enter")
+    @kb.add("c-end")
+    def _history_bottom(event) -> None:  # noqa: ANN001
+        if on_history_scroll is not None:
+            on_history_scroll("bottom")
+
+    if on_history_scroll is not None:
+        from prompt_toolkit.key_binding.bindings.mouse import load_mouse_bindings
+        from prompt_toolkit.keys import Keys as _Keys
+
+        from harness.cli.mouse import wheel_direction
+
+        # prompt_toolkit's own wheel dispatch needs a known terminal height
+        # (CPR); intercepting the raw event here makes the wheel work on every
+        # terminal.  Non-wheel mouse events are handed back to prompt_toolkit.
+        default_mouse_bindings = load_mouse_bindings()
+
+        @kb.add(_Keys.Vt100MouseEvent)
+        def _wheel(event) -> None:  # noqa: ANN001
+            direction = wheel_direction(event.data)
+            if direction is not None:
+                on_history_scroll("wheel-up" if direction < 0 else "wheel-down")
+                return
+            for binding in default_mouse_bindings.get_bindings_for_keys((_Keys.Vt100MouseEvent,)):
+                if binding.filter():
+                    binding.call(event)
+                    return
+
+    # Enter and Escape+Enter step aside while a permission question is open:
+    # the approval bindings above already own Enter, and registration order would
+    # otherwise let this one win (prompt_toolkit calls the *last* enabled match).
+    @kb.add("enter", filter=~approval_pending)
     def _submit(event) -> None:  # noqa: ANN001
         # Enter submits *the buffer*; it must never just accept a completion,
         # or the prompt would never return and no input would reach the agent.
@@ -293,7 +365,7 @@ def build_key_bindings(
         composer.sync_from_buffer(event.current_buffer.text)
         composer.sync_popups()
 
-    @kb.add("escape", "enter")
+    @kb.add("escape", "enter", filter=~approval_pending)
     def _newline(event) -> None:  # noqa: ANN001
         event.current_buffer.insert_text("\n")
 

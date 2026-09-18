@@ -10,6 +10,8 @@ build_context -> token_guard -+-> compact -----+
                               |                |
                               +-> llm <--------+ (compact loops back)
                                     |
+                                    v
+                                permission  (ALLOW / DENY / ASK per call)
                                     |
                                     v
                                   act  (skills + delegate + tools, in order)
@@ -39,6 +41,7 @@ from harness.orchestration.nodes import (
     make_build_context_node,
     make_compact_node,
     make_llm_node,
+    make_permission_node,
     make_token_guard_node,
 )
 from harness.orchestration.routing import (
@@ -46,8 +49,10 @@ from harness.orchestration.routing import (
     NODE_COMPACT,
     NODE_CONTEXT,
     NODE_LLM,
+    NODE_PERMISSION,
     NODE_TERMINATE,
     NODE_TOKEN_GUARD,
+    after_gate,
     after_llm,
     after_side_effect,
     after_token_guard,
@@ -66,6 +71,12 @@ class Orchestrator:
     tool_runtime: Any
     skill_loader: Any
     subagent_runtime: SubAgentRuntime
+    #: the permission gate (``harness.permission.PermissionGate``); ``None`` means
+    #: no permission node is built and the loop behaves as it did before
+    permission_gate: Any = None
+    #: resolves the tools a loaded skill declares, for the permission ceiling.
+    #: Injected (not imported) so this module stays free of a skill dependency.
+    skill_tool_resolver: Callable[[list[str]], tuple[list[str], str]] | None = None
     termination_policy: TerminationPolicy = field(default_factory=TerminationPolicy)
     checkpointer: Any = None
     on_event: EventHandler | None = None
@@ -83,6 +94,18 @@ class Orchestrator:
         )
         builder.add_node(NODE_COMPACT, make_compact_node(self.context_manager, self.on_event))
         builder.add_node(NODE_LLM, make_llm_node(self.gateway, self.on_event))
+        # the permission gate decides every call before anything is executed
+        if self.permission_gate is not None:
+            # The gate was built before the emitter existed; give it one now so
+            # permission_ask / permission_decision reach the same event stream as
+            # every other node.
+            self.permission_gate.emit = self._permission_emit
+            builder.add_node(
+                NODE_PERMISSION,
+                make_permission_node(
+                    self.permission_gate, self.on_event, self.skill_tool_resolver
+                ),
+            )
         # one node executes every pending call of a turn (see make_act_node)
         builder.add_node(
             NODE_ACT,
@@ -102,16 +125,30 @@ class Orchestrator:
         builder.add_edge(NODE_COMPACT, NODE_LLM)
 
         policy = self.termination_policy
+        after_llm_targets = {NODE_ACT: NODE_ACT, NODE_TERMINATE: NODE_TERMINATE}
+        if self.permission_gate is not None:
+            after_llm_targets[NODE_PERMISSION] = NODE_PERMISSION
         builder.add_conditional_edges(
             NODE_LLM,
             lambda state: after_llm(state, policy),
-            {NODE_ACT: NODE_ACT, NODE_TERMINATE: NODE_TERMINATE},
+            after_llm_targets,
         )
+        if self.permission_gate is not None:
+            builder.add_conditional_edges(
+                NODE_PERMISSION,
+                after_gate,
+                {NODE_ACT: NODE_ACT, NODE_TERMINATE: NODE_TERMINATE},
+            )
         builder.add_conditional_edges(NODE_ACT, after_side_effect, {NODE_CONTEXT: NODE_CONTEXT})
         builder.add_edge(NODE_TERMINATE, END)
 
         self.graph = builder.compile(checkpointer=self.checkpointer)
         return self.graph
+
+    async def _permission_emit(self, event_type: str, message: str, data: dict[str, Any]) -> None:
+        """Bridge the gate's events onto the turn's event stream."""
+
+        await self._emit(Event(type=event_type, message=message, data=data))
 
     async def _terminate_node(self, state: AgentState) -> dict[str, Any]:
         decision: TerminationDecision = self.termination_policy.check(state)
@@ -188,6 +225,8 @@ def build_orchestrator(
     tool_runtime: Any,
     skill_loader: Any,
     subagent_runtime: SubAgentRuntime,
+    permission_gate: Any = None,
+    skill_tool_resolver: Callable[[list[str]], tuple[list[str], str]] | None = None,
     termination_policy: TerminationPolicy | None = None,
     checkpointer: Any = None,
     on_event: EventHandler | None = None,
@@ -199,6 +238,8 @@ def build_orchestrator(
         tool_runtime=tool_runtime,
         skill_loader=skill_loader,
         subagent_runtime=subagent_runtime,
+        permission_gate=permission_gate,
+        skill_tool_resolver=skill_tool_resolver,
         termination_policy=termination_policy or TerminationPolicy(),
         checkpointer=checkpointer,
         on_event=on_event,

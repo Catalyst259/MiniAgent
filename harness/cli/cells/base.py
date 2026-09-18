@@ -84,6 +84,10 @@ class AssistantCell(BaseCell):
     message_id: str = ""
     complete: bool = False
 
+    @property
+    def expand_key(self) -> str:
+        return reasoning_key(self)
+
     # ---------------------------------------------------------------- lifecycle
     def append_delta(self, delta: str) -> None:
         self.source += delta
@@ -105,7 +109,7 @@ class AssistantCell(BaseCell):
         try:
             from rich.markdown import Markdown
 
-            console.print(Markdown(self.source))
+            console.print(Markdown(safe_text(self.source)))
         except Exception:  # pragma: no cover - markdown is best effort
             console.print(safe_text(self.source))
 
@@ -137,20 +141,34 @@ class ToolCell(BaseCell):
         self.error = error
         self.status = ToolStatus.FAILED
 
-    def preview_body(self, max_lines: int | None = None) -> tuple[list[str], int]:
-        """Return the sanitized visible body and the number of hidden lines."""
+    def body_lines(self) -> list[str]:
+        """Every sanitized output line (no display limit applied)."""
 
         body = safe_text(self.error or self.output).rstrip("\n")
-        if not body:
+        return body.splitlines() if body else []
+
+    def preview_body(self, max_lines: int | None = None) -> tuple[list[str], int]:
+        """Return the visible body slice and the number of hidden lines.
+
+        ``max_lines=None`` means "use this cell's configured preview limit" (the
+        rich/plain renderer's default); pass an explicit number to override it,
+        including a large one for a truly expanded view.
+        """
+
+        lines = self.body_lines()
+        if not lines:
             return [], 0
-        shown, hidden = self.preview(body, self.max_preview_lines if max_lines is None else max_lines)
-        return shown.splitlines(), hidden
+        limit = self.max_preview_lines if max_lines is None else max_lines
+        if limit <= 0 or limit >= len(lines):
+            return lines, 0
+        return lines[:limit], len(lines) - limit
 
     # ------------------------------------------------------------------ rendering
     @property
     def glyph(self) -> str:
+        # running and done must differ by *shape*, not only by colour
         return {
-            ToolStatus.RUNNING: "●",
+            ToolStatus.RUNNING: "◐",
             ToolStatus.DONE: "●",
             ToolStatus.FAILED: "✗",
         }[self.status]
@@ -183,7 +201,7 @@ class ToolCell(BaseCell):
         header.append(f"{self.glyph} ", style=self.style)
         header.append(self.tool, style=f"bold {self.style}")
         if self.arguments:
-            header.append(f"  {_format_arguments(self.arguments)}", style="dim")
+            header.append(f"  {format_arguments(self.arguments)}", style="dim")
         if self.status is ToolStatus.DONE and self.duration_ms:
             header.append(f"  ({self.duration_ms} ms)", style="dim")
         elif self.status is ToolStatus.RUNNING:
@@ -197,9 +215,9 @@ class ToolCell(BaseCell):
 
         lines, hidden = self.preview_body()
         for line in lines:
-            console.print(f"  [dim]│[/dim] {line}", highlight=False)
+            console.print(Text.assemble(("  │ ", "dim"), (line, "")))
         if hidden:
-            console.print(f"  [dim]│ … {hidden} more line(s)[/dim]")
+            console.print(Text(f"  │ … {hidden} more line(s)", style="dim"))
 
 
 @dataclass
@@ -210,6 +228,11 @@ class SubAgentCell(BaseCell):
     ok: bool = True
     iterations: int = 0
     max_preview_lines: int = 12
+    status: ToolStatus = ToolStatus.RUNNING
+
+    @property
+    def expand_key(self) -> str:
+        return f"subagent:{self.agent}:{id(self)}"
 
     def render(self, console: ConsoleLike) -> None:
         from rich.text import Text
@@ -224,9 +247,9 @@ class SubAgentCell(BaseCell):
         if self.summary:
             shown, hidden = self.preview(safe_text(self.summary), self.max_preview_lines)
             for line in shown.splitlines():
-                console.print(f"  [dim]│[/dim] {line}", highlight=False)
+                console.print(Text.assemble(("  │ ", "dim"), (line, "")))
             if hidden:
-                console.print(f"  [dim]│ … {hidden} more line(s)[/dim]")
+                console.print(Text(f"  │ … {hidden} more line(s)", style="dim"))
 
 
 @dataclass
@@ -235,8 +258,10 @@ class ErrorCell(BaseCell):
     fatal: bool = False
 
     def render(self, console: ConsoleLike) -> None:
+        from rich.text import Text
+
         style = "bold red" if self.fatal else "red"
-        console.print(f"[{style}]!! {self.message}[/{style}]")
+        console.print(Text(f"!! {self.message}", style=style))
 
 
 @dataclass
@@ -245,7 +270,9 @@ class InfoCell(BaseCell):
     style: str = "dim"
 
     def render(self, console: ConsoleLike) -> None:
-        console.print(f"[{self.style}]{self.message}[/{self.style}]")
+        from rich.text import Text
+
+        console.print(Text(self.message, style=self.style))
 
 
 @dataclass
@@ -254,13 +281,17 @@ class SkillCell(BaseCell):
     ok: bool = True
 
     def render(self, console: ConsoleLike) -> None:
+        from rich.text import Text
+
         if self.ok:
-            console.print(f"[magenta]◆ skill loaded: {self.name}[/magenta]")
+            console.print(Text(f"◆ skill loaded: {self.name}", style="magenta"))
         else:
-            console.print(f"[red]◆ skill failed: {self.name}[/red]")
+            console.print(Text(f"◆ skill failed: {self.name}", style="red"))
 
 
-def _format_arguments(arguments: dict[str, Any], limit: int = 110) -> str:
+def format_arguments(arguments: dict[str, Any], limit: int = 110) -> str:
+    """One-line JSON preview of a tool call's arguments."""
+
     import json
 
     try:
@@ -268,6 +299,28 @@ def _format_arguments(arguments: dict[str, Any], limit: int = 110) -> str:
     except (TypeError, ValueError):  # pragma: no cover - defensive
         rendered = str(arguments)
     return rendered if len(rendered) <= limit else rendered[: limit - 1] + "…"
+
+
+def reasoning_key(cell: AssistantCell) -> str:
+    """Stable key for "expand this cell's chain of thought"."""
+
+    return f"reasoning:{cell.message_id or id(cell)}"
+
+
+def expand_key(cell: Any) -> str:
+    """Key used by ``AppState.expanded_tool_ids`` for any expandable cell."""
+
+    if isinstance(cell, ToolCell):
+        return cell.call_id
+    if isinstance(cell, AssistantCell):
+        return reasoning_key(cell)
+    if isinstance(cell, SubAgentCell):
+        return cell.expand_key
+    return f"{type(cell).__name__}:{id(cell)}"
+
+
+#: backwards-compatible private alias (older call sites)
+_format_arguments = format_arguments
 
 
 __all__ = [
@@ -282,4 +335,7 @@ __all__ = [
     "ErrorCell",
     "InfoCell",
     "SkillCell",
+    "expand_key",
+    "format_arguments",
+    "reasoning_key",
 ]

@@ -24,6 +24,12 @@ read-only) when the task is large or the repository is unfamiliar.
     delegate repository mapping to the Explorer when available. For an explicit multi-step plan,
     delegate to the Planner. Do not skip a matching skill or subagent merely because direct
     filesystem tools are available.
+- Before the first tool call of every user task, make exactly one planning-agent decision:
+    choose `PLAN_REQUIRED` or `PLAN_NOT_REQUIRED`. Choose `PLAN_REQUIRED` for broad repository
+    analysis, architecture work, migrations, multi-file changes, ambiguous tasks, or work with
+    meaningful dependencies; in that case call `delegate` with agent `planner` before other
+    tools. Choose `PLAN_NOT_REQUIRED` only for a small, local, unambiguous action. Do not repeat
+    this decision later in the same task, and do not call `planner` after choosing `PLAN_NOT_REQUIRED`.
 - Never invent tool names. Use only the tools listed below.
 - Finish with a concise report: what changed, where (file paths), and how you verified it.
 """

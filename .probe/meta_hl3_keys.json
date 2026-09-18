@@ -1,0 +1,105 @@
+{
+  "name": "hl3_keys",
+  "mode": "headless-vt100-capture",
+  "rows_rows_note": "terminal size used for Vt100_Output.get_size()",
+  "rows": 24,
+  "cols": 100,
+  "total_bytes": 5315,
+  "probe_wall_seconds": 10.962,
+  "marks": [
+    {
+      "label": "banner",
+      "at": 0.6925,
+      "offset": 12
+    },
+    {
+      "label": "wait_for:'›':ok",
+      "at": 0.7249,
+      "offset": 109
+    },
+    {
+      "label": "turn_start:'hi'",
+      "at": 1.1259,
+      "offset": 205
+    },
+    {
+      "label": "turn_end:'hi'",
+      "at": 1.1509,
+      "offset": 1159
+    },
+    {
+      "label": "snapshot:A_before_keys",
+      "at": 5.352,
+      "offset": 2940
+    },
+    {
+      "label": "send:'wheel_up_sgr'",
+      "at": 5.352,
+      "offset": 2940
+    },
+    {
+      "label": "snapshot:B_after_wheel",
+      "at": 6.553,
+      "offset": 3324
+    },
+    {
+      "label": "send:'PageUp'",
+      "at": 6.553,
+      "offset": 3324
+    },
+    {
+      "label": "snapshot:C_after_pageup",
+      "at": 7.7542,
+      "offset": 3740
+    },
+    {
+      "label": "send:'PageDown'",
+      "at": 7.7542,
+      "offset": 3740
+    },
+    {
+      "label": "snapshot:D_after_pagedown",
+      "at": 8.9554,
+      "offset": 4156
+    },
+    {
+      "label": "send:'End'",
+      "at": 8.9555,
+      "offset": 4156
+    },
+    {
+      "label": "snapshot:E_after_end",
+      "at": 10.156,
+      "offset": 4572
+    },
+    {
+      "label": "quit",
+      "at": 10.7584,
+      "offset": 5315
+    },
+    {
+      "label": "END",
+      "at": 10.9607,
+      "offset": 5315
+    }
+  ],
+  "idle": null,
+  "writes": {
+    "total_write_calls": 1914,
+    "tail_4s_write_calls": 651,
+    "tail_4s_writes_per_second": 162.75,
+    "tail_4s_max_gap_seconds": 0.1018,
+    "run_max_gap_seconds": 0.105,
+    "run_write_calls_per_second": 174.62
+  },
+  "cpr_queries": 0,
+  "final_scrollback_len": 0,
+  "modes": {
+    "12": false,
+    "25": true,
+    "2004": false,
+    "1": false,
+    "7": true
+  },
+  "hard_timeout": 45.0
+}
