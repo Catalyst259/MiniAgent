@@ -119,6 +119,16 @@ class ApprovalRequested:
 
 
 @dataclass
+class InteractionResolved:
+    """A model-requested choice finished and can be recorded in the transcript."""
+
+    question: str = ""
+    value: str = ""
+    ok: bool = True
+    error: str = ""
+
+
+@dataclass
 class PermissionDecided:
     """The permission layer reached a verdict for one tool call."""
 
@@ -163,6 +173,7 @@ AgentEvent = Union[
     ContextUsage,
     Compacted,
     ApprovalRequested,
+    InteractionResolved,
     PermissionDecided,
     ErrorEvent,
     TurnFinished,
@@ -184,6 +195,8 @@ EVENT_TYPES: tuple[type, ...] = (
     ContextUsage,
     Compacted,
     ApprovalRequested,
+    InteractionResolved,
+    PermissionDecided,
     ErrorEvent,
     TurnFinished,
 )

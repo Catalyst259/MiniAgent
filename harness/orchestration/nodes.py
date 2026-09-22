@@ -24,6 +24,7 @@ from harness.agent.events import Event
 from harness.agent.state import AgentState
 from harness.context.manager import PreparedContext
 from harness.inference.gateway import ModelGateway
+from harness.interaction import choices_from_payload
 from harness.subagents.runtime import SubAgentRuntime
 
 log = logging.getLogger(__name__)
@@ -176,9 +177,16 @@ def make_llm_node(gateway: ModelGateway, on_event: EventHandler | None = None):
             reasoning=response.reasoning,
         )
         pending = {
-            "pending_tools": [call for call in response.tool_calls if call.name not in ("load_skill", "delegate")],
+            "pending_tools": [
+                call
+                for call in response.tool_calls
+                if call.name not in ("load_skill", "delegate", "request_user_input")
+            ],
             "pending_skills": [call for call in response.tool_calls if call.name == "load_skill"],
             "pending_delegates": [call for call in response.tool_calls if call.name == "delegate"],
+            "pending_interactions": [
+                call for call in response.tool_calls if call.name == "request_user_input"
+            ],
         }
         update: dict[str, Any] = {
             "iteration": iteration,
@@ -263,6 +271,7 @@ def make_permission_node(
         calls = [
             *(data.get("pending_skills") or []),
             *(data.get("pending_delegates") or []),
+            *(data.get("pending_interactions") or []),
             *(data.get("pending_tools") or []),
         ]
         if not calls:
@@ -316,6 +325,7 @@ def make_act_node(
     tool_runtime: ToolRuntimeLike,
     skill_loader: SkillLoaderLike,
     subagent_runtime: "SubAgentRuntime",
+    interaction_provider: Any = None,
     on_event: EventHandler | None = None,
 ):
     """Execute *every* tool call of the current assistant turn, in order.
@@ -331,14 +341,20 @@ def make_act_node(
         pending: list[ToolCall] = list(scratch().get("pending_tools") or [])
         skill_calls: list[ToolCall] = list(scratch().get("pending_skills") or [])
         delegate_calls: list[ToolCall] = list(scratch().get("pending_delegates") or [])
-        if not (pending or skill_calls or delegate_calls):
+        interaction_calls: list[ToolCall] = list(
+            scratch().get("pending_interactions") or []
+        )
+        if not (pending or skill_calls or delegate_calls or interaction_calls):
             return {}
 
         # order of execution follows the model's own ordering of the calls
         order = {call.id: index for index, call in enumerate(
-            [*skill_calls, *delegate_calls, *pending]
+            [*skill_calls, *delegate_calls, *interaction_calls, *pending]
         )}
-        combined = sorted([*skill_calls, *delegate_calls, *pending], key=lambda c: order[c.id])
+        combined = sorted(
+            [*skill_calls, *delegate_calls, *interaction_calls, *pending],
+            key=lambda c: order[c.id],
+        )
 
         # The permission gate already decided every call of this turn (it runs as
         # its own node).  A call the gate denied never reaches a tool: it becomes
@@ -370,7 +386,7 @@ def make_act_node(
 
         # Announce every permitted tool call before executing, so the UI shows timing.
         for call in allowed:
-            if call.name in ("load_skill", "delegate"):
+            if call.name in ("load_skill", "delegate", "request_user_input"):
                 continue
             await _emit(
                 on_event,
@@ -410,8 +426,20 @@ def make_act_node(
                 history.append(entry)
                 continue
 
+            if call.name == "request_user_input":
+                observation = await _request_user_input(
+                    call, interaction_provider, on_event
+                )
+                observations.append(observation)
+                messages.append(observation.to_message())
+                continue
+
             # plain tools run concurrently (they are independent)
-            tool_calls = [call for call in allowed if call.name not in ("load_skill", "delegate")]
+            tool_calls = [
+                item
+                for item in allowed
+                if item.name not in ("load_skill", "delegate", "request_user_input")
+            ]
             tool_observations = await tool_runtime.run_many(tool_calls, decided=decided)
             for observation in tool_observations:
                 await _emit(
@@ -441,6 +469,88 @@ def make_act_node(
         return update
 
     return act
+
+
+async def _request_user_input(
+    call: ToolCall,
+    provider: Any,
+    on_event: EventHandler | None,
+) -> Observation:
+    arguments = call.arguments or {}
+    question = str(arguments.get("question") or "").strip()
+    title = str(arguments.get("title") or "Choose an option").strip()
+    if not question:
+        return Observation(
+            tool_call_id=call.id,
+            tool_name=call.name,
+            ok=False,
+            content="",
+            error="request_user_input requires a question",
+        )
+    try:
+        choices = choices_from_payload(arguments.get("options"))
+    except ValueError as exc:
+        return Observation(
+            tool_call_id=call.id,
+            tool_name=call.name,
+            ok=False,
+            content="",
+            error=str(exc),
+        )
+    if provider is None or not getattr(provider, "available", False):
+        return Observation(
+            tool_call_id=call.id,
+            tool_name=call.name,
+            ok=False,
+            content="",
+            error="no interactive user-input UI is attached",
+        )
+
+    await _emit(
+        on_event,
+        Event(
+            type="interaction_request",
+            message=question,
+            data={
+                "id": call.id,
+                "title": title,
+                "options": [choice.__dict__ for choice in choices],
+            },
+        ),
+    )
+    try:
+        selected = await provider.choose(question, choices, title=title)
+    except Exception as exc:  # a missing/broken UI becomes a tool error, never a hang
+        await _emit(
+            on_event,
+            Event(
+                type="interaction_resolved",
+                message=f"{question}: cancelled",
+                data={"id": call.id, "ok": False, "error": str(exc)},
+            ),
+        )
+        return Observation(
+            tool_call_id=call.id,
+            tool_name=call.name,
+            ok=False,
+            content="",
+            error=str(exc),
+        )
+
+    await _emit(
+        on_event,
+        Event(
+            type="interaction_resolved",
+            message=f"{question}: {selected.label}",
+            data={"id": call.id, "ok": True, "value": selected.value},
+        ),
+    )
+    return Observation(
+        tool_call_id=call.id,
+        tool_name=call.name,
+        ok=True,
+        content=f"User selected `{selected.value}` ({selected.label}).",
+    )
 
 
 async def _load_one_skill(

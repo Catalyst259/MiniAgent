@@ -31,11 +31,21 @@ _ACTION_TYPES: dict[str, str] = {
     "shell": "shell",
     "load_skill": "skill",
     "delegate": "agent",
+    "request_user_input": "interaction",
 }
 
 #: Tools that never modify anything; used by the read-only sandbox profile.
 _READ_ONLY_TOOLS = frozenset(
-    {"list_dir", "read_file", "glob", "grep", "git_diff", "load_skill", "delegate"}
+    {
+        "list_dir",
+        "read_file",
+        "glob",
+        "grep",
+        "git_diff",
+        "load_skill",
+        "delegate",
+        "request_user_input",
+    }
 )
 
 #: How much damage one action can do (design document section 4, ``metadata.risk``).
@@ -56,6 +66,7 @@ _RISK_BY_TOOL: dict[str, str] = {
     "write_file": "medium",
     "apply_patch": "medium",
     "delegate": "medium",
+    "request_user_input": "low",
     "shell": "high",
 }
 
@@ -65,6 +76,7 @@ _RISK_BY_TYPE: dict[str, str] = {
     "shell": "high",
     "skill": "low",
     "agent": "medium",
+    "interaction": "low",
     "network": "high",
     "tool": "medium",
 }
@@ -86,6 +98,7 @@ _TARGET_KEYS: dict[str, tuple[str, ...]] = {
     "shell": ("command",),
     "load_skill": ("name",),
     "delegate": ("agent", "task"),
+    "request_user_input": ("question",),
 }
 
 _DEFAULT_TARGET_KEYS = ("path", "command", "pattern", "name", "agent", "task")

@@ -87,6 +87,17 @@ def translate(event: Event, state: AppState | None = None) -> ui.AgentEvent | No
         # The question is rendered by the approval provider (status line + keys),
         # not as a transcript cell; the decision that follows is the record.
         return None
+    if kind == "interaction_request":
+        # The injected interaction provider owns the live modal panel.
+        return None
+    if kind == "interaction_resolved":
+        question, _, answer = event.message.partition(": ")
+        return ui.InteractionResolved(
+            question=question,
+            value=str(data.get("value") or answer),
+            ok=bool(data.get("ok", True)),
+            error=str(data.get("error") or ""),
+        )
     if kind == "skill_load":
         return ui.SkillLoaded(name=str(data.get("skill") or event.message), ok=bool(data.get("ok", True)))
     if kind == "delegate_start":

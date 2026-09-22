@@ -2,38 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class Theme:
-    prompt: str = "bold green"
-    user: str = "bold green"
-    assistant: str = "white"
-    tool_running: str = "yellow"
-    tool_done: str = "green"
-    tool_failed: str = "bold red"
-    subagent: str = "blue"
-    skill: str = "magenta"
-    info: str = "dim"
-    error: str = "bold red"
-    banner: str = "bold cyan"
-
-
-DEFAULT_THEME = Theme()
-
-GLYPHS = {
-    "prompt": "›",
-    "tool_running": "●",
-    "tool_done": "●",
-    "tool_failed": "✗",
-    "subagent": "⇢",
-    "skill": "◆",
-    "error": "!!",
-    "compact": "◆",
-}
-
-__all__ = ["Theme", "DEFAULT_THEME", "GLYPHS", "MARKDOWN_THEME", "build_markdown_console"]
+__all__ = ["MARKDOWN_THEME", "build_markdown_console"]
 
 
 #: Markdown styles for a terminal agent: no background fills.

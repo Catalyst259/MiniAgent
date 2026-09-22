@@ -18,10 +18,11 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-from harness.agent.dto import Message, ToolCall
-from harness.agent.state import AgentState, new_state
+from harness.agent.dto import ToolCall
+from harness.agent.state import AgentState
 from harness.cli import events as ui
 from harness.cli.approval import InteractiveApprovalProvider, PlainApprovalProvider
+from harness.cli.interaction import InteractiveInteractionProvider, PlainInteractionProvider
 from harness.cli.cells import (
     AssistantCell,
     ErrorCell,
@@ -37,9 +38,9 @@ from harness.cli.composer.composer import PromptInterrupt, SlashCompleter, build
 from harness.cli.events_bridge import EventBridge
 from harness.cli.render.renderer import Renderer
 from harness.cli.render.transcript import TranscriptControl, TranscriptPane
+from harness.cli.session import Session
 from harness.cli.shell_intent import ShellIntent, run_shell_intent
 from harness.cli.state import AppState
-from harness.infra.checkpoint import AsyncCheckpointStore
 from harness.infra.config import HarnessConfig
 
 BANNER_AGENT = "MiniAgent"
@@ -87,299 +88,6 @@ def load_config(args: argparse.Namespace) -> HarnessConfig:
     return config
 
 
-# --------------------------------------------------------------------- session
-class Session:
-    """One CLI session: conversation history + harness + checkpointer."""
-
-    def __init__(
-        self,
-        config: HarnessConfig,
-        *,
-        model: str | None = None,
-        on_event=None,
-        approval_provider=None,
-    ) -> None:
-        self.config = config
-        self.model_name = model or config.default_model
-        self.history: list[Message] = []
-        self.turn = 0
-        self.on_event = on_event
-        self.harness = None
-        #: the permission layer's ``ASK`` branch.  A provider that cannot answer
-        #: (plain stdin, batch) is a real answer - it fails closed.
-        self.approval_provider = approval_provider
-        self._checkpoint_cm: AsyncCheckpointStore | None = None
-
-    async def __aenter__(self) -> "Session":
-        from harness.core import AgentHarness
-
-        checkpointer = None
-        if self.config.checkpoint.enabled:
-            self._checkpoint_cm = AsyncCheckpointStore(str(self.config.checkpoint_path))
-            checkpointer = await self._checkpoint_cm.__aenter__()
-        harness = AgentHarness(
-            self.config,
-            model_name=self.model_name,
-            on_event=self.on_event,
-            approval_provider=self.approval_provider,
-        )
-        harness.build()
-        if checkpointer is not None:
-            harness.orchestrator.checkpointer = checkpointer
-            harness.orchestrator.build()
-        self.harness = harness
-        return self
-
-    async def __aexit__(self, *exc_info) -> None:
-        if self.harness is not None:
-            await self.harness.close()
-        if self._checkpoint_cm is not None:
-            await self._checkpoint_cm.__aexit__(*exc_info)
-
-    # -------------------------------------------------------------------- turns
-    def _state(self, task: str) -> AgentState:
-        self.turn += 1
-        state = new_state(
-            task,
-            thread_id=f"{self.harness.thread_id}-t{self.turn}",
-            task_id=f"{self.harness.thread_id}-{self.turn}",
-        )
-        state["messages"] = list(self.history) + [Message(role="user", content=task)]
-        return state
-
-    async def ask(self, task: str, *, on_delta=None, write_memory: bool = True) -> AgentState:
-        assert self.harness is not None
-        state = self._state(task)
-        result = await self.harness.run(
-            task, state=state, thread_id=state["thread_id"], on_delta=on_delta
-        )
-        self.history = list(result.get("messages") or [])
-        if write_memory and result.get("termination_status") in ("final_answer", None):
-            await self.harness.finish(result, repo=str(self.config.workspace_root))
-        return result
-
-    async def compact_now(self) -> str:
-        assert self.harness is not None
-        state = self._state("(manual compact)")
-        self.turn -= 1  # a compact is not a conversational turn
-        outcome = await self.harness.context_manager.compact(state)
-        if not outcome.applied:
-            return "Nothing to compact yet."
-        self.history = [
-            Message(role="user", content=f"[Context compacted]\n{outcome.summary}")
-        ] + outcome.tail[len(self.history) :]
-        return f"Compacted {outcome.folded} message(s) into {len(outcome.summary)} chars."
-
-    # ------------------------------------------------------------------ commands
-    async def command_handlers(self) -> dict[str, Any]:
-        return {
-            "help": self.cmd_help,
-            "status": self.cmd_status,
-            "model": self.cmd_model,
-            "tools": self.cmd_tools,
-            "skills": self.cmd_skills,
-            "agents": self.cmd_agents,
-            "permissions": self.cmd_permissions,
-            "compact": self.cmd_compact,
-            "clear": self.cmd_clear,
-            "exit": self.cmd_exit,
-        }
-
-    async def cmd_help(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        app.emit_line("")
-        for command in app.registry.all():
-            app.emit_line(f"  /{command.name:<9} {command.description}")
-        app.emit_line("  !<cmd>    run a shell command in the workspace")
-        return False
-
-    async def cmd_status(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        harness = self.harness
-        info = await harness.status()
-        context_status = await harness.context_manager.status(self._state("(status)"))
-        self.turn -= 1
-        rows: list[tuple[str, Any]] = [
-            ("model", info["model"]),
-            ("workspace", info["workspace"]),
-            ("thread", info["thread_id"]),
-            ("turn", self.turn),
-            ("messages", len(self.history)),
-            ("tools", info["tools"]),
-            ("skills", info["skills"]),
-            ("loaded skills", ", ".join(_loaded_skills(self.history)) or "(none)"),
-            ("subagents", ", ".join(info["subagents"]) or "(none)"),
-            ("context", context_status["usage"]),
-            ("compactions", context_status["compactions"]),
-        ]
-        memory = info.get("memory")
-        if memory:
-            rows.append(
-                (
-                    "memory",
-                    f"{memory['backend']} / {memory['embedding']} / {memory['records']} records"
-                    + ("" if memory["enabled"] else " (disabled)"),
-                )
-            )
-        permissions = info.get("permissions")
-        if permissions:
-            policy = permissions["policy"]
-            grants = permissions["memory"]
-            rows.append(
-                (
-                    "permissions",
-                    f"{policy['mode']} / {policy['rules']} rule(s) / "
-                    f"{policy['sandbox_deny']} protected path(s)",
-                )
-            )
-            rows.append(
-                (
-                    "grants",
-                    f"{grants['session']} session, {grants['temporary']} once"
-                    + (
-                        f", {grants['persistent']['grants']} saved"
-                        if grants.get("persistent")
-                        else ", not persisted"
-                    ),
-                )
-            )
-        app.emit_line("")
-        for key, value in rows:
-            app.emit_line(f"  {key:<14} {value}")
-        return False
-
-    async def cmd_model(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        if not argument:
-            app.emit_line("")
-            for name, model_config in sorted(self.config.models.items()):
-                marker = "❯" if name == self.model_name else " "
-                app.emit_line(f"  {marker} {name}  {model_config.label}")
-            app.emit_line("  use /model <name> to switch")
-            return False
-        try:
-            self.harness.set_model(argument.strip())
-            self.model_name = argument.strip()
-            app.notify(f"model switched to {self.harness.model_config.label}")
-        except Exception as exc:
-            app.notify(f"cannot switch model: {exc}", error=True)
-        return False
-
-    async def cmd_tools(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        harness = self.harness
-        app.emit_line("")
-        for name in harness.tool_runtime.visible_tools():
-            spec = harness.tool_registry.get(name)
-            app.emit_line(f"  {name:<12} {spec.description.splitlines()[0]}")
-        for schema in harness.context_builder.tool_schemas:
-            function = schema.get("function", {})
-            if function.get("name") in ("load_skill", "delegate"):
-                description = function["description"].splitlines()[0][:90]
-                app.emit_line(f"  {function['name']:<12} {description}")
-        return False
-
-    async def cmd_skills(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        harness = self.harness
-        loaded = set(_loaded_skills(self.history))
-        app.emit_line("")
-        for name in harness.skill_registry.names():
-            metadata = harness.skill_registry.get(name)
-            mark = "*" if name in loaded else " "
-            app.emit_line(f"  {mark} {name}  {metadata.description}")
-        return False
-
-    async def cmd_agents(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        harness = self.harness
-        app.emit_line("")
-        for name in harness.subagent_registry.names():
-            spec = harness.subagent_registry.get(name)
-            app.emit_line(f"  {name}  {spec.description}")
-            app.emit_line(f"      tools: {', '.join(spec.tools) or '(none)'}")
-        return False
-
-    async def cmd_permissions(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        """Show the permission posture and the grants the user has given.
-
-        ``/permissions clear`` drops the session grants, so "allow this session"
-        can be taken back without restarting the agent.
-        """
-
-        harness = self.harness
-        stack = harness.permission
-        if stack is None:  # pragma: no cover - defensive
-            app.notify("permissions are not wired into this harness", error=True)
-            return False
-
-        action = (argument or "").strip().lower()
-        if action in ("clear", "reset"):
-            count = len(stack.memory.session.rules())
-            stack.memory.clear_session()
-            app.notify(f"cleared {count} session permission grant(s)")
-            return False
-
-        policy = stack.policy
-        app.emit_line("")
-        app.emit_line(f"  mode           {policy.mode}")
-        app.emit_line(f"  default        {policy.default.value}")
-        app.emit_line(f"  rules          {len(policy.rules)}")
-        for rule in policy.rules:
-            app.emit_line(f"      {rule.describe()}")
-        if policy.sandbox_deny:
-            app.emit_line(f"  protected      {', '.join(r.target for r in policy.sandbox_deny)}")
-        ceiling = policy.skill_ceiling()
-        if ceiling["tools"]:
-            app.emit_line(
-                f"  skill ceiling  {ceiling['name']}: {', '.join(ceiling['tools'])}"
-            )
-        session = stack.memory.session.rules()
-        app.emit_line(f"  session grants {len(session)}")
-        for rule in session:
-            app.emit_line(f"      {rule.describe()}")
-        persistent = stack.memory.persistent
-        if persistent is not None:
-            state = "on" if persistent.enabled else "disabled"
-            app.emit_line(f"  saved grants   {state} ({persistent.path})")
-            if persistent.unsafe_reason:
-                app.emit_line(f"      refused: {persistent.unsafe_reason}")
-            for rule in persistent.rules():
-                app.emit_line(f"      {rule.describe()}")
-        else:
-            app.emit_line("  saved grants   not enabled (permissions.persistent: false)")
-        app.emit_line("  /permissions clear   drop the session grants")
-        return False
-
-    async def cmd_compact(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        app.notify(await self.compact_now())
-        return False
-
-    async def cmd_clear(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        self.history = []
-        self.turn += 1
-        harness = self.harness
-        harness.thread_id = f"thread-{self.turn}-{os.getpid() % 10000}"
-        if harness.orchestrator is not None:
-            harness.orchestrator.thread_id = harness.thread_id
-        app.state.history_cells.clear()
-        app.state.active_cell = None
-        app.state.expanded_tool_ids.clear()
-        app.renderer.reset_history_tracking()
-        app.scroll_to_bottom()
-        app.notify(f"conversation cleared (new thread {harness.thread_id})")
-        return False
-
-    async def cmd_exit(self, app: "MiniAgentApp", argument: str = "") -> bool:
-        return True
-
-
-def _loaded_skills(messages: list[Message]) -> list[str]:
-    found: list[str] = []
-    for message in messages:
-        if message.role == "assistant":
-            for call in message.tool_calls:
-                if call.name == "load_skill":
-                    name = str(call.arguments.get("name") or "").strip()
-                    if name and name not in found:
-                        found.append(name)
-    return found
-
-
 # -------------------------------------------------------------------- the app
 @dataclass
 class MiniAgentApp:
@@ -394,10 +102,11 @@ class MiniAgentApp:
     composer: Composer = field(init=False)
     #: the interactive approval provider (permission layer, ``ASK`` branch)
     approval: "InteractiveApprovalProvider" = field(init=False)
+    #: general multiple-choice interaction used by the model-facing native tool
+    interaction: "InteractiveInteractionProvider" = field(init=False)
     running: bool = False
     _tool_cells: dict[str, ToolCell] = field(default_factory=dict)
     _subagent_cell: SubAgentCell | None = None
-    _last_rendered_active: str = ""
     _final_cell: AssistantCell | None = None
     _assistant_cell: AssistantCell | None = None
     _ui_app: Any = field(default=None, init=False)
@@ -410,6 +119,21 @@ class MiniAgentApp:
             state=self.state.composer,
             popup=CommandPopup(self.registry, self.state.command_popup),
         )
+        supplied_interaction = (
+            getattr(self.session, "interaction_provider", None) if self.session else None
+        )
+        self.interaction = (
+            supplied_interaction
+            if supplied_interaction is not None
+            else InteractiveInteractionProvider(
+                state=self.state,
+                on_change=self._invalidate_ui,
+                activity=self._set_activity,
+            )
+        )
+        interaction_answerable = getattr(self.interaction, "_answerable", None)
+        if interaction_answerable is not None:
+            self.interaction._answerable = lambda: self._ui_app is not None
         # The session may already carry a provider chosen for the front end that is
         # actually running (plain stdin, or a fail-closed one-shot run).  Only
         # install the key-driven provider when nothing was chosen - otherwise a
@@ -419,23 +143,18 @@ class MiniAgentApp:
             supplied
             if supplied is not None
             else InteractiveApprovalProvider(
-                state=self.state,
-                on_change=self._invalidate_ui,
-                activity=self._set_activity,
+                interaction=self.interaction,
             )
         )
-        # A key-driven question only works while the application loop is running;
-        # this is how the app tells its provider whether that is the case.
-        answerable = getattr(self.approval, "_answerable", None)
-        if answerable is not None:
-            self.approval._answerable = lambda: self._ui_app is not None
         harness = getattr(self.session, "harness", None) if self.session is not None else None
         if harness is not None:
             harness.approval_provider = self.approval
+            harness.interaction_provider = self.interaction
         elif self.session is not None:
             # The harness does not exist until the session is entered, so hand
             # the provider to the session and let it build with it.
             self.session.approval_provider = self.approval
+            self.session.interaction_provider = self.interaction
 
     def _set_activity(self, text: str) -> None:
         self.state.activity = text
@@ -543,15 +262,8 @@ class MiniAgentApp:
             cell = SubAgentCell(agent=event.agent, task=event.task)
             self._subagent_cell = cell
             self.state.set_active(cell)
-            from rich.text import Text
-
             if self._ui_app is None:
-                line = Text()
-                line.append("⇢ ", style="blue")
-                line.append(event.agent, style="bold blue")
-                line.append(f"  {event.task.splitlines()[0][:100] if event.task else ''}", style="dim")
-                self.renderer.print(line)
-                self.renderer.print("[dim]  … working[/dim]")
+                self.renderer.render_cell(cell)
 
         elif isinstance(event, ui.SubAgentFinished):
             cell = self._subagent_cell or SubAgentCell(agent=event.agent)
@@ -596,6 +308,16 @@ class MiniAgentApp:
 
         elif isinstance(event, ui.PermissionDecided):
             self._handle_permission_decision(event)
+
+        elif isinstance(event, ui.InteractionResolved):
+            if event.ok:
+                self.state.append_cell(
+                    InfoCell(message=f"? {event.question} → {event.value}")
+                )
+            else:
+                self.state.append_cell(
+                    InfoCell(message=f"? {event.question} — cancelled: {event.error}")
+                )
 
         elif isinstance(event, ui.ErrorEvent):
             self.state.append_cell(ErrorCell(message=event.message, fatal=event.fatal))
@@ -702,10 +424,6 @@ class MiniAgentApp:
     def _toggle_latest_expandable(self) -> None:
         self.state.toggle_latest_expandable()
         self._invalidate_ui()
-
-    #: backwards-compatible name
-    def _toggle_latest_tool(self) -> None:
-        self._toggle_latest_expandable()
 
     def _render_tool_result(self, cell: ToolCell, *, key: str = "") -> None:
         """Print the finished cell and drop it from the running set."""
@@ -841,32 +559,13 @@ class MiniAgentApp:
         return False
 
     # --------------------------------------------------------------- interactive
-    def create_prompt_session(self):
-        """Build the prompt session.
-
-        Kept as its own method so tests can inject a session with pipe input
-        (a pseudo-terminal cannot be allocated in every environment).
-        """
-
-        from prompt_toolkit import PromptSession
-
-        return PromptSession(
-            # The completer feeds prompt_toolkit's async completion path (used by
-            # ``complete_while_typing`` and Ctrl+Space); the visible candidate
-            # list is the composer popup, so the native menu is given no space.
-            completer=SlashCompleter(self.registry),
-            key_bindings=build_key_bindings(self.composer, cancel=self._on_cancel),
-            complete_while_typing=True,
-            reserve_space_for_menu=0,
-            bottom_toolbar=self._toolbar,
-        )
-
     def create_application(self):
         """Build the long-lived prompt_toolkit application."""
 
         from prompt_toolkit.application import Application
         from prompt_toolkit.buffer import Buffer
-        from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+        from prompt_toolkit.filters import Condition
+        from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, VSplit, Window
         from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
         from prompt_toolkit.layout.dimension import Dimension
         from prompt_toolkit.styles import Style
@@ -905,6 +604,19 @@ class MiniAgentApp:
             focusable=False,
             show_cursor=False,
         )
+        popup_container = ConditionalContainer(
+            Window(popup, height=Dimension(min=1, max=7), dont_extend_height=True),
+            filter=Condition(lambda: self.state.command_popup.visible),
+        )
+        interaction = FormattedTextControl(
+            self.interaction.fragments,
+            focusable=False,
+            show_cursor=False,
+        )
+        interaction_container = ConditionalContainer(
+            Window(interaction, wrap_lines=True, dont_extend_height=True),
+            filter=Condition(lambda: self.interaction.waiting),
+        )
         prompt = FormattedTextControl(
             lambda: [("class:prompt", "› ")],
             focusable=False,
@@ -939,13 +651,14 @@ class MiniAgentApp:
             on_submit=submit,
             on_toggle_tool=self._toggle_latest_expandable,
             on_history_scroll=scroll_history,
-            approval=self.approval,
+            interaction=self.interaction,
         )
 
         root = HSplit(
             [
                 pane,
-                Window(popup, height=Dimension(min=0, max=7), dont_extend_height=True),
+                interaction_container,
+                popup_container,
                 VSplit([Window(prompt, width=2), Window(input_control)]),
                 Window(status, height=1, dont_extend_height=True),
             ]
@@ -969,6 +682,11 @@ class MiniAgentApp:
                 "transcript": "",
                 "transcript-dim": "ansibrightblack",
                 "activity": "ansibrightblack italic",
+                "interaction-title": "ansicyan bold",
+                "interaction-question": "ansiwhite bold",
+                "interaction-detail": "ansibrightblack",
+                "interaction-choice": "ansigreen bold",
+                "interaction-dim": "ansibrightblack",
                 "status": "ansibrightblack",
                 "status-hint": "ansibrightblack",
                 "scrollbar.background": "bg:#3a3a3a",
@@ -995,12 +713,6 @@ class MiniAgentApp:
         run_state = "running" if self.running else "idle"
         parts = [("class:status", f" {BANNER_AGENT} · {model} · {run_state}")]
         pane = self._transcript_pane
-        # A permission question takes over the status line: it is the one thing
-        # that blocks the turn, so it must never be scrolled out of sight.
-        if self.approval.waiting:
-            parts.extend(self.approval.status_fragments())
-            parts.append(("class:approval-dim", "  Enter: confirm · ←/→: move · Ctrl+R: reject"))
-            return parts
         if pane is not None and pane.scrolled_up_by:
             parts.append(
                 (
@@ -1065,12 +777,7 @@ class MiniAgentApp:
             self._ui_turn_task = None
             self._invalidate_ui()
 
-    async def prompt_loop(self, *, prompt_session=None) -> int:
-        # Keep the injectable PromptSession path for pipe-driven tests and
-        # embedders; real terminals use the long-lived application below.
-        if prompt_session is not None or "create_prompt_session" in self.__dict__:
-            return await self._legacy_prompt_loop(prompt_session)
-
+    async def prompt_loop(self) -> int:
         from prompt_toolkit.patch_stdout import patch_stdout
 
         self.renderer.banner()
@@ -1089,33 +796,6 @@ class MiniAgentApp:
             self._transcript_pane = None
         return 0
 
-    async def _legacy_prompt_loop(self, prompt_session=None) -> int:
-        from prompt_toolkit.formatted_text import FormattedText
-        from prompt_toolkit.patch_stdout import patch_stdout
-
-        prompt_session = prompt_session or self.create_prompt_session()
-
-        def message():  # noqa: ANN202 - prompt_toolkit accepts a callable
-            return FormattedText(self.composer.prompt_fragments())
-
-        with patch_stdout(raw=True):
-            while True:
-                try:
-                    text = await prompt_session.prompt_async(message)
-                except (PromptInterrupt, KeyboardInterrupt):
-                    return 0
-                except EOFError:
-                    return 0
-
-                text = (text or "").strip()
-                self.composer.sync_from_buffer("")
-                self.composer.sync_popups()
-                self.state.command_popup.reset()
-                if not text:
-                    continue
-                if await self.handle_input(text):
-                    return 0
-
     def _on_cancel(self) -> None:
         """Ctrl+C while the agent is running aborts the turn; otherwise it is
         just a cleared input line."""
@@ -1125,6 +805,9 @@ class MiniAgentApp:
         cancel_approval = getattr(self.approval, "cancel", None)
         if callable(cancel_approval):
             cancel_approval()
+        cancel_interaction = getattr(self.interaction, "cancel", None)
+        if callable(cancel_interaction):
+            cancel_interaction("the turn was cancelled")
 
         task = self._ui_turn_task
         if self.running and task is not None and not task.done():
@@ -1132,19 +815,6 @@ class MiniAgentApp:
             self.notify("aborting the current turn…")
         else:
             self.notify("input cleared")
-
-    #: the turn task, whichever attribute the caller set
-    @property
-    def turn_task(self) -> asyncio.Task | None:
-        return self._ui_turn_task
-
-    def _toolbar(self):  # noqa: ANN202 - prompt_toolkit accepts a callable
-        from prompt_toolkit.formatted_text import FormattedText
-
-        harness = self.session.harness
-        model = harness.model_config.model if harness else "?"
-        state = "running" if self.running else "idle"
-        return FormattedText([("fg:ansibrightblack", f" {BANNER_AGENT} · {model} · {state} ")])
 
     # --------------------------------------------------------------------- batch
     async def run_batch(self, task: str) -> int:
@@ -1177,12 +847,15 @@ async def async_main(argv: list[str] | None = None) -> int:
     batch = bool(args.task)
     plain = args.plain or not sys.stdin.isatty()
     approver = None
+    interaction_provider = None
     if not batch and not plain:
         approver = None  # MiniAgentApp installs the interactive provider
     elif not batch and plain:
         approver = PlainApprovalProvider()
+        interaction_provider = PlainInteractionProvider()
     else:
         from harness.permission import AutoDenyProvider
+        from harness.interaction import UnavailableInteractionProvider
 
         approver = AutoDenyProvider(
             note=(
@@ -1190,9 +863,17 @@ async def async_main(argv: list[str] | None = None) -> int:
                 "interactively, or allow the action in config.yaml"
             )
         )
+        interaction_provider = UnavailableInteractionProvider(
+            "this one-shot run cannot ask the user a question"
+        )
 
     app = MiniAgentApp(
-        session=Session(config, model=args.model, approval_provider=approver),
+        session=Session(
+            config,
+            model=args.model,
+            approval_provider=approver,
+            interaction_provider=interaction_provider,
+        ),
         renderer=Renderer(),
         stream=not args.no_stream,
         show_events=args.show_events,
@@ -1213,7 +894,10 @@ async def _plain_loop(app: MiniAgentApp) -> int:
     app.renderer.banner()
     while True:
         try:
-            line = await asyncio.to_thread(input, "› ")
+            # Plain mode is deliberately sequential: no agent work is running
+            # while it waits for the next line.  Reading directly also avoids a
+            # default-executor wake-up that can be lost in restricted hosts.
+            line = input("› ")
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

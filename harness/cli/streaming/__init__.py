@@ -1,6 +1,5 @@
-"""Streaming controllers: assistant (Markdown) and tool (raw log) pipelines."""
+"""Streaming controller for assistant Markdown."""
 
 from harness.cli.streaming.assistant_stream import AssistantStream
-from harness.cli.streaming.tool_stream import ToolStream
 
-__all__ = ["AssistantStream", "ToolStream"]
+__all__ = ["AssistantStream"]

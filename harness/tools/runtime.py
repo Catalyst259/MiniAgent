@@ -8,6 +8,7 @@ outs, output caps, error normalization) and delegates the actual work to a
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextvars
 import json
 import logging
@@ -130,10 +131,7 @@ class ToolRuntime:
             return self._failure(call, validation_error, started)
 
         try:
-            output = await asyncio.wait_for(
-                asyncio.to_thread(self.registry.call, call.name, call.arguments),
-                timeout=self.timeout_seconds,
-            )
+            output = await self._call_backend(call)
         except asyncio.TimeoutError:
             return self._failure(
                 call, f"tool timed out after {self.timeout_seconds:.0f}s", started
@@ -156,6 +154,45 @@ class ToolRuntime:
             truncated=truncated,
             duration_ms=self._ms(started),
         )
+
+    async def _call_backend(self, call: ToolCall) -> Any:
+        """Run a synchronous backend without depending on one thread wake-up.
+
+        Some restricted hosts can lose the selector wake-up generated when an
+        executor future completes.  A long ``wait_for(to_thread(...))`` then
+        sleeps until its timeout even though the worker is already done.  The
+        short event-loop tick below processes that completion while preserving
+        non-blocking tool execution and the original overall timeout.
+        """
+
+        # Do not use asyncio's *default* executor here.  ``asyncio.Runner`` waits
+        # for that executor through another cross-thread wake-up during shutdown,
+        # reproducing the same lost-wakeup hang after an otherwise successful
+        # batch/test.  A scoped executor is already idle by the time it is joined.
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="miniagent-tool",
+        )
+        loop = asyncio.get_running_loop()
+        task = loop.run_in_executor(
+            executor,
+            self.registry.call,
+            call.name,
+            call.arguments,
+        )
+        completed = False
+        try:
+            async with asyncio.timeout(self.timeout_seconds):
+                while not task.done():
+                    await asyncio.sleep(0.02)
+                result = task.result()
+                completed = True
+                return result
+        except TimeoutError:
+            task.cancel()
+            raise asyncio.TimeoutError from None
+        finally:
+            executor.shutdown(wait=completed, cancel_futures=not completed)
 
     async def run_many(
         self,

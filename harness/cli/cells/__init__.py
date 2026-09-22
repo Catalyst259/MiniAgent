@@ -3,7 +3,6 @@
 from harness.cli.cells.base import (
     AssistantCell,
     BaseCell,
-    ConsoleLike,
     ErrorCell,
     HistoryCell,
     InfoCell,
@@ -17,7 +16,6 @@ from harness.cli.cells.base import (
 __all__ = [
     "BaseCell",
     "HistoryCell",
-    "ConsoleLike",
     "UserCell",
     "AssistantCell",
     "ToolCell",

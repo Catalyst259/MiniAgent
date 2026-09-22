@@ -1,178 +1,0 @@
-[?12l[?25h[?2004h[?1l[?25l[0m[?7l[0m[J[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[2A[2D[0;32;1m› hi[0m
-[0;90;3m· running list_dir[0m
-[0m [0m[K[0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[3A[2D[0;32m● list_dir[0m[K[0m
-[0;90m  │ ./ (17 entries):[0m
-[0;90m  │ harness/[0m
-[0;90m  │ scripts/[0m
-[0;90m  │ … 15 more line(s)[0m
-[0;90;3m· waiting for model[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[3A[2D[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;90;3m· receiving assistant response[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[3A[2D[0;32;1m› hi again[0m[K[0m
-[0;90;3m· starting task[0m
-
-[0m [0m[K[0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[3A[2D[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;90;3m· receiving assistant response[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[3A[2D[0;32;1m› one more[0m[K[0m
-[0;90;3m· starting task[0m
-
-[0m [0m[K[0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[21A[2D[0;90m  │ ./ (17 entries):[0m
-[0;90m  │ harness/[0m
-[4C[0;90mscripts/[0m[K[0m
-[4C[0;90m… 15 more line(s)[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used[Cthe offline deterministic model, so it [Cn[Cpe[Cted the[Cwo[Ckspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or[Cedit config.yaml ./miniag[Cnt.sh ""[0m[K[0m
-[0;32;1m› hi again[0m[K[0m
-[0m[mock model - no API key configured][Ctask: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used[Cthe offline deterministic model, so it [Cn[Cpe[Cted the[Cwo[Ckspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or[Cedit config.yaml ./miniag[Cnt.sh ""[0m[K[0m
-[0;32;1m› one more[0m[K[0m
-[0m[mock model - no API key configured][Ctask: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;90;3m· receiving assistant response[0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[23A[2C[0;90mharness/[0m[K[0m
-[4C[0;90msc[Cipt[0m
-[4C[0;90m… 15 more line(s)[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Co[Cfigure a real model to ge[C ac[Cual work done:[0m[K[0m
-[0mexport DEEPSEEK_API_KEY=...   [C    # o[C edit config.yaml[C./miniagent.sh ""[0m[K[0m
-[0;32;1m› hi again[0m[K[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Co[Cfigure a real model to ge[C ac[Cual work done:[0m[K[0m
-[0mexport DEEPSEEK_API_KEY=...   [C    # o[C edit config.yaml[C./miniagent.sh ""[0m[K[0m
-[0;32;1m› one more[0m[K[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Co[Cfigure a real model to ge[C ac[Cual work done:[0m[K[0m
-[0mexport DEEPSEEK_API_KEY=...   [C    # o[C edit config.yaml[C./miniagent.sh ""[0m[K[0m
-[0;32;1m› last[0m[K[0m
-[2C[0;90;3mstarting t[2Ck[0m[K[0m
-
-[2C[?7h[0m[?12l[?25h[?25l[?7l[23A[2D[0mThis run used the offline deterministic model, so it inspected the workspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;32;1m› hi again[0m[K[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline determi[Cistic model, so it inspec[Ced [Che workspace but[0m
-[0mdid not reason about the task.[CConfigu[Ce a real model to[Cget actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;32;1m› one more[0m[K[0m
-[0m[mock model - no API key configured] task: hi reconnaissance steps performed: 1[0m
-[0m [0m[K[0m
-[0mThis run used the offline determi[Cistic model, so it inspec[Ced [Che workspace but[0m
-[0mdid not reason about the task.[CConfigu[Ce a real model to[Cget actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-[0;32;1m› last[0m[K[0m
-[0;32;1m── final answer ──[0m
-[0m[mock model -[Cno API key configured] task: hi reconna[Cs[Can[Ce steps[Cpe[Cformed: 1[0m[K[0m
-[0m [0m[K[0m
-[0mThis run used the offline deterministic[Cmodel, so it inspected th[C workspace but[0m
-[0mdid not reason about the task. Configure a real model to get actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./miniagent.sh ""[0m
-
-[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[2D[23A[J[0m[?7h[?2004l[?2004h[?25l[0m[?7l[0m[J[0;32;1m› one more[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0;32;1m› last[0m
-[0;32;1m── final answer ──[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[2D[23A[J[0m[?7h[?2004l[?2004h[?25l[0m[?7l[0m[J[0;32;1m› one more[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0;32;1m› last[0m
-[0;32;1m── final answer ──[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[2C[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[?7h[0m[?12l[?25h[?25l[?7l[23A[2D[0m[J[0;32;1m› one more[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0;32;1m› last[0m
-[0;32;1m── final answer ──[0m
-[0m[mock model - no API key configured] task: hi reconnaissanc[59Ce[0m
-[0m steps performed: 1[0m
-
-[0mThis run used the offline deterministic model, so it inspec[59Ct[0m
-[0med the workspace but[0m
-[0mdid not reason about the task. Configure a real model to ge[59Ct[0m
-[0m actual work done:[0m
-[0mexport DEEPSEEK_API_KEY=...        # or edit config.yaml ./[59Cm[0m
-[0miniagent.sh ""[0m
-[0m [0m
-[0m [0m
-[0;32;1m› [2D[0m
-[J[?7h[0m[?12l[?25h[?2004l

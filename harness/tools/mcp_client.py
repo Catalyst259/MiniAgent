@@ -37,7 +37,16 @@ class _LoopThread:
 
     def _run(self) -> None:
         asyncio.set_event_loop(self.loop)
+        # Keep the selector from sleeping indefinitely if this host loses the
+        # wake-up byte written by ``run_coroutine_threadsafe``.  MCP requests
+        # cross into this loop from the tool worker thread, so the same scoped
+        # short tick used by the tool runtime is required here as well.
+        self.loop.call_soon(self._tick)
         self.loop.run_forever()
+
+    def _tick(self) -> None:
+        if self.loop.is_running():
+            self.loop.call_later(0.02, self._tick)
 
     def run(self, coro, timeout: float | None = None):
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)

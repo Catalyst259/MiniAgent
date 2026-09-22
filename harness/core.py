@@ -72,6 +72,7 @@ class AgentHarness:
         thread_id: str | None = None,
         harness_factory: Callable[..., "AgentHarness"] | None = None,
         approval_provider: Any = None,
+        interaction_provider: Any = None,
         permission_memory: Any = None,
     ) -> None:
         self.config = config
@@ -112,6 +113,10 @@ class AgentHarness:
         #: Permission layer.  The provider decides the ``ASK`` branch; when it is
         #: left unset the gate fails closed (deny) whenever it needs an answer.
         self.approval_provider: Any = approval_provider
+        #: Optional front-end adapter for model-requested user choices.  When it
+        #: is absent the tool schema is omitted, so an isolated agent cannot ask
+        #: a question nobody can answer.
+        self.interaction_provider: Any = interaction_provider
         #: Permission memory shared with the session (and its subagents), so an
         #: "allow this session" answer is not asked again by a child agent.
         self.permission_memory: Any = permission_memory
@@ -218,6 +223,10 @@ class AgentHarness:
         native = native_tool_schemas(
             delegate_schema=subagent_runtime.tool_schema() if subagent_runtime.enabled else None,
             skills_available=config.skills.enabled and bool(self.skill_registry.names()),
+            interaction_available=bool(
+                self.interaction_provider is not None
+                and getattr(self.interaction_provider, "available", False)
+            ),
         )
         extra_schemas = native if config.tools.include_native_tools else []
         tool_schemas = self.tool_runtime.schemas(extra=extra_schemas)
@@ -286,6 +295,7 @@ class AgentHarness:
             tool_runtime=self.tool_runtime,
             skill_loader=self.skill_loader,
             subagent_runtime=self.subagent_runtime,
+            interaction_provider=self.interaction_provider,
             permission_gate=self.permission.gate if self.permission else None,
             skill_tool_resolver=self._skill_tool_ceiling,
             termination_policy=TerminationPolicy(

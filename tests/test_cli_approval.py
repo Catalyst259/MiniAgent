@@ -16,9 +16,7 @@ import pytest
 
 from harness.cli import events as ui
 from harness.cli.approval import (
-    CHOICE_KEYS,
     InteractiveApprovalProvider,
-    PendingApproval,
     PlainApprovalProvider,
     build_options,
 )
@@ -66,11 +64,11 @@ def write_call(call_id: str = "c1"):
 async def test_request_arms_a_future_and_shows_the_question(provider, state):
     request = provider.request(from_arguments("shell", {"command": "npm install x"}), "no rule")
     assert provider.waiting
-    assert state.approval is not None
+    assert state.interaction is not None
     assert not request.future.done(), "the question must wait for a real answer"
 
     provider.offer({"can_session": True, "can_persist": False})
-    assert [option[0] for option in state.approval.options] == ["once", "session", "reject"]
+    assert [option.value for option in state.interaction.options] == ["once", "session", "reject"]
 
 
 async def test_answer_resolves_the_awaiting_gate(provider, gate, state):
@@ -83,7 +81,7 @@ async def test_answer_resolves_the_awaiting_gate(provider, gate, state):
     assert results[0].allowed
     assert results[0].verdict.approval == "once"
     assert not provider.waiting
-    assert state.approval is None
+    assert state.interaction is None
 
 
 async def test_reject_produces_a_denial(provider, gate):
@@ -133,14 +131,14 @@ async def test_only_one_question_is_live_at_a_time(provider, gate):
 async def test_move_changes_the_selected_option(provider, state):
     provider.request(from_arguments("write_file", {"path": "a.py"}), "no rule")
     provider.offer({"can_session": True, "can_persist": True})
-    assert state.approval.current[0] == "once"
+    assert state.interaction.current.value == "once"
     provider.move(1)
-    assert state.approval.current[0] == "session"
+    assert state.interaction.current.value == "session"
     provider.move(-1)
-    assert state.approval.current[0] == "once"
+    assert state.interaction.current.value == "once"
     # wrapping
     provider.move(-1)
-    assert state.approval.current[0] == "reject"
+    assert state.interaction.current.value == "reject"
 
 
 async def test_accept_selection_uses_the_highlighted_option(provider):
@@ -183,39 +181,13 @@ def make_bindings(provider):
         def sync_popups(self):  # pragma: no cover - unused
             pass
 
-    return build_key_bindings(_Composer(), approval=provider)
+    return build_key_bindings(_Composer(), interaction=provider.interaction)
 
 
 def test_every_option_has_a_distinct_key():
     options = build_options({"can_session": True, "can_persist": True})
     keys = [option[2] for option in options]
     assert keys == ["1", "2", "3", "4"]
-    assert set(CHOICE_KEYS) == {"1", "2", "3", "4"}
-
-
-# ------------------------------------------------------------------ status line
-async def test_status_fragments_are_empty_without_a_question(provider):
-    assert provider.status_fragments() == []
-
-
-async def test_status_fragments_show_the_action_and_choices(provider):
-    provider.request(from_arguments("shell", {"command": "npm install axios"}), "no rule for npm")
-    provider.offer({"can_session": True, "can_persist": True})
-    text = "".join(fragment for _style, fragment in provider.status_fragments())
-    assert "permission" in text
-    assert "npm install axios" in text
-    assert "Allow once" in text
-    assert "Allow this session" in text
-    assert "Always allow" in text
-    assert "Reject" in text
-
-
-async def test_status_line_marks_the_selected_choice(provider):
-    provider.request(from_arguments("write_file", {"path": "a.py"}), "no rule")
-    provider.offer({"can_session": True, "can_persist": False})
-    marked = [fragment for _style, fragment in provider.status_fragments() if "▸" in fragment]
-    assert len(marked) == 1
-    assert "Allow once" in marked[0]
 
 
 async def test_activity_string_reports_waiting_for_approval(state):
@@ -333,12 +305,12 @@ async def test_left_right_move_and_enter_confirms(provider):
     # bindings are built after the question exists: their filter reads live state
     bindings = make_bindings(provider)
     _pick(bindings, "right").call(FakeEvent())
-    assert provider.state.approval.current[0] == "session"
+    assert provider.state.interaction.current.value == "session"
     _pick(bindings, "left").call(FakeEvent())
-    assert provider.state.approval.current[0] == "once"
+    assert provider.state.interaction.current.value == "once"
 
     picked = _pick(bindings, "enter")
-    assert picked.handler.__name__ == "_approval_accept", "Enter must confirm, not submit"
+    assert picked.handler.__name__ == "_interaction_accept", "Enter must confirm, not submit"
     picked.call(FakeEvent())
     assert not provider.waiting
     assert provider.history[-1][1] == "once"
@@ -367,7 +339,7 @@ async def test_enter_still_submits_when_no_question_is_open(provider):
             pass
 
     bindings = build_key_bindings(
-        _Composer(), approval=provider, on_submit=submitted.append
+        _Composer(), interaction=provider.interaction, on_submit=submitted.append
     )
     binding = _pick(bindings, "enter")
     assert binding is not None
@@ -426,7 +398,7 @@ async def test_cancel_releases_a_pending_question(provider, state):
     assert future.done()
     assert (await future).scope == "reject"
     assert not provider.waiting
-    assert state.approval is None
+    assert state.interaction is None
     assert provider.history[-1][1] == "cancelled"
     # idempotent: a second cancel is a no-op, not a crash
     assert provider.cancel() is False
@@ -438,11 +410,12 @@ async def test_app_cancel_clears_the_question():
 
     config = HarnessConfig()
     app = MiniAgentApp(session=Session(config), renderer=Renderer())
+    app.interaction._answerable = lambda: True
     app.approval.request(from_arguments("write_file", {"path": "a.py"}), "no rule")
     assert app.approval.waiting
     app._on_cancel()
     assert not app.approval.waiting
-    assert app.state.approval is None
+    assert app.state.interaction is None
 
 
 # -------------------------------------------------------------- plain provider
@@ -615,7 +588,7 @@ async def test_bang_command_without_a_live_ui_fails_closed(tmp_path):
     """
 
     provider = InteractiveApprovalProvider(state=AppState())
-    provider._answerable = lambda: False
+    provider.interaction._answerable = lambda: False
     app = make_shell_app(
         tmp_path, provider, rules=[{"tool": "shell", "permission": "ask"}]
     )

@@ -6,7 +6,9 @@ harness never implements ``save_state``/``load_state``/``resume_state`` itself.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -20,21 +22,47 @@ class AsyncCheckpointStore:
         self.path = path
         self._saver = None
         self._cm = None
+        self._loop_tick: asyncio.Task[None] | None = None
 
     async def __aenter__(self) -> Any:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+        # aiosqlite completes operations on a worker thread.  Some restricted
+        # event-loop hosts can lose that thread's wake-up byte and then sleep
+        # forever despite the result already being ready.  A scoped low-rate
+        # timer keeps the selector advancing while this store is open.
+        self._loop_tick = asyncio.create_task(self._keep_loop_awake())
         self._cm = AsyncSqliteSaver.from_conn_string(self.path)
-        self._saver = await self._cm.__aenter__()
-        await self._saver.setup()
-        return self._saver
+        try:
+            self._saver = await self._cm.__aenter__()
+            await self._saver.setup()
+            return self._saver
+        except BaseException:
+            await self._stop_loop_tick()
+            raise
 
     async def __aexit__(self, *exc_info) -> None:
-        if self._cm is not None:
-            await self._cm.__aexit__(*exc_info)
-            self._cm = None
-            self._saver = None
+        try:
+            if self._cm is not None:
+                await self._cm.__aexit__(*exc_info)
+                self._cm = None
+                self._saver = None
+        finally:
+            await self._stop_loop_tick()
+
+    @staticmethod
+    async def _keep_loop_awake() -> None:
+        while True:
+            await asyncio.sleep(0.02)
+
+    async def _stop_loop_tick(self) -> None:
+        task = self._loop_tick
+        self._loop_tick = None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 class SyncCheckpointStore:

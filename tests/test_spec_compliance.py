@@ -13,7 +13,7 @@ import pytest
 from harness.agent.dto import Message, ToolCall
 from harness.agent.state import new_state
 from harness.agent.termination import TerminationPolicy
-from harness.cli.commands import COMMANDS
+from harness.cli.composer.slash_commands import build_default_registry
 from harness.core import AgentHarness
 from harness.inference.config import ModelConfig
 from harness.inference.mock_gateway import MockGateway
@@ -191,7 +191,7 @@ async def test_explorer_harness_cannot_write(harness):
 
 # ------------------------------------------------------------- Slash commands
 def test_all_slash_commands_implemented():
-    assert set(COMMANDS) == REQUIRED_COMMANDS
+    assert {command.display for command in build_default_registry({}).all()} == REQUIRED_COMMANDS
 
 
 async def test_every_slash_command_dispatches(harness, tmp_path):

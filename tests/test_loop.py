@@ -45,10 +45,22 @@ def make_config(workspace, **overrides) -> HarnessConfig:
     return config
 
 
-def make_harness(workspace, responses=None, *, on_event=None, **overrides):
+def make_harness(
+    workspace,
+    responses=None,
+    *,
+    on_event=None,
+    interaction_provider=None,
+    **overrides,
+):
     config = make_config(workspace, **overrides)
     gateway = MockGateway(config.resolve_model("main"), responses=responses)
-    harness = AgentHarness(config, workspace_root=workspace, on_event=on_event)
+    harness = AgentHarness(
+        config,
+        workspace_root=workspace,
+        on_event=on_event,
+        interaction_provider=interaction_provider,
+    )
     harness.build()
     harness.set_gateway(gateway)
     gateway.skills = {
@@ -184,6 +196,51 @@ async def test_loop_terminates_without_tool_calls(workspace):
     result = await harness.run("Say something")
     assert result["final_answer"] == "nothing to do"
     assert result["iteration"] == 1
+
+
+async def test_loop_exposes_and_executes_user_input_tool(workspace):
+    class ScriptedInteraction:
+        available = True
+
+        def __init__(self) -> None:
+            self.questions = []
+
+        async def choose(self, question, options, *, title="", detail=""):
+            self.questions.append((title, question, list(options)))
+            return options[1]
+
+    interaction = ScriptedInteraction()
+    events = []
+    responses = [
+        ScriptedResponse.tool(
+            "request_user_input",
+            question="Which strategy?",
+            options=[
+                {"value": "fast", "label": "Fast"},
+                {"value": "safe", "label": "Safe"},
+            ],
+        ),
+        ScriptedResponse.say("Using safe."),
+    ]
+    harness, gateway = make_harness(
+        workspace,
+        responses,
+        on_event=events.append,
+        interaction_provider=interaction,
+    )
+    result = await harness.run("Choose a strategy")
+
+    offered = {schema["function"]["name"] for schema in gateway.calls[0].tools}
+    assert "request_user_input" in offered
+    assert interaction.questions[0][1] == "Which strategy?"
+    observation = next(
+        item for item in result["observations"] if item.tool_name == "request_user_input"
+    )
+    assert observation.ok and "safe" in observation.content
+    assert {event.type for event in events} >= {
+        "interaction_request",
+        "interaction_resolved",
+    }
 
 
 async def test_loop_reports_tool_errors_to_the_model(workspace):

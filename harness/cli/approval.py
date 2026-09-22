@@ -1,80 +1,29 @@
-"""Interactive approval: the ``ASK`` branch of the permission layer in the TUI.
+"""Permission approval adapters.
 
-Design document sections 7, 8 and 15.  The agent turn already runs as an
-``asyncio`` task on the application's event loop, so approval needs no threads,
-no ``input()`` and no second prompt: the provider arms a future, the status line
-shows the four choices, and a key binding resolves the future.
-
-```text
-gate.check_batch ──► provider.request() ──► future returned (armed)
-                              │
-                              └─► AppState.approval -> status line + keys
-                                                    │
-                     key "1".."4" / Enter ──────────┘
-                              │
-                       future.set_result(Approval)
-                              │
-gate awaits the APProval ◄────┘
-```
+The TUI adapter translates permission scopes to the same generic choice modal
+used by model-requested questions.  Permission policy stays in the permission
+layer; selection state, rendering and keys stay in one UI component.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
+from harness.cli.interaction import InteractiveInteractionProvider
+from harness.interaction import Choice
 from harness.permission.action import Action
 from harness.permission.approval import Approval, ApprovalRequest
 
-log = logging.getLogger(__name__)
-
-#: The four choices, in the order the design document lists them.
-CHOICES: tuple[tuple[str, str, str], ...] = (
-    ("once", "Allow once", "1"),
-    ("session", "Allow this session", "2"),
-    ("persistent", "Always allow", "3"),
-    ("reject", "Reject", "4"),
-)
-
-#: Keys that select a choice directly.
-CHOICE_KEYS: dict[str, str] = {"1": "once", "2": "session", "3": "persistent", "4": "reject"}
-
-
 @dataclass
 class PendingApproval:
-    """One question waiting for the user."""
+    """Permission metadata while the shared choice modal is open."""
 
     action: Action
     reason: str
     future: asyncio.Future
-    #: ``(scope, label, key)`` for the choices this action may be given
-    options: list[tuple[str, str, str]] = field(default_factory=list)
-    selected: int = 0
-
-    def move(self, delta: int) -> None:
-        if self.options:
-            self.selected = (self.selected + delta) % len(self.options)
-
-    def resolve(self, scope: str | None = None, *, note: str = "") -> bool:
-        """Answer the question.  Returns ``False`` when the scope is not offered."""
-
-        chosen = scope or (self.options[self.selected][0] if self.options else "reject")
-        if not any(option[0] == chosen for option in self.options):
-            log.warning("scope %s is not available for %s", chosen, self.action.describe())
-            return False
-        if self.future.done():
-            return False
-        self.future.set_result(Approval(scope=chosen, note=note))
-        return True
-
-    @property
-    def current(self) -> tuple[str, str, str]:
-        if not self.options:
-            return ("reject", "Reject", "4")
-        return self.options[self.selected]
 
 
 def build_options(data: dict[str, Any]) -> list[tuple[str, str, str]]:
@@ -97,26 +46,33 @@ def build_options(data: dict[str, Any]) -> list[tuple[str, str, str]]:
 
 
 class InteractiveApprovalProvider:
-    """An :class:`~harness.permission.approval.ApprovalProvider` backed by the TUI."""
+    """Adapt permission requests to an :class:`InteractiveInteractionProvider`."""
 
     interactive = True
 
     def __init__(
         self,
         *,
-        state: Any,
+        state: Any = None,
+        interaction: InteractiveInteractionProvider | None = None,
         on_change: Callable[[], None] | None = None,
         activity: Callable[[str], None] | None = None,
     ) -> None:
-        self.state = state
-        self.on_change = on_change
-        self.activity = activity
+        if interaction is None:
+            if state is None:
+                raise ValueError("state or interaction is required")
+            interaction = InteractiveInteractionProvider(
+                state=state,
+                on_change=on_change,
+                activity=activity,
+            )
+        self.interaction = interaction
+        self.state = interaction.state
         self.pending: PendingApproval | None = None
         self.history: list[tuple[str, str]] = []
         self._options_factory: Callable[[dict[str, Any]], list[tuple[str, str, str]]] = build_options
-        #: how to tell whether the key-dispatching application is live; the app
-        #: replaces this once its loop starts.
-        self._answerable: Callable[[], bool] = lambda: True
+        self._note = ""
+        self._aborting = False
 
     # ------------------------------------------------------------------ protocol
     def request(self, action: Action, reason: str) -> ApprovalRequest:
@@ -124,16 +80,26 @@ class InteractiveApprovalProvider:
 
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        # The gate emits the permission_ask event *after* this returns, so the
-        # options arrive separately; arm with the safe minimum in the meantime.
-        self.pending = PendingApproval(
-            action=action,
-            reason=reason,
-            future=future,
-            options=[("once", "Allow once", "1"), ("reject", "Reject", "4")],
-        )
-        self.state.approval = self.pending
-        self._changed()
+        self.pending = PendingApproval(action=action, reason=reason, future=future)
+        self._note = ""
+        self._aborting = False
+        try:
+            choice_future = self.interaction.request(
+                action.describe(),
+                self._choices([("once", "Allow once", "1"), ("reject", "Reject", "4")]),
+                title="Permission required",
+                detail=reason,
+                on_resolve=self._selected,
+                on_cancel=self._cancelled,
+                activity_text="waiting for your approval",
+            )
+        except Exception:
+            self.pending = None
+            raise
+        # The permission gate awaits ``future`` rather than the modal's Choice
+        # future.  Drain a cancellation exception from the latter so aborting a
+        # turn cannot create an unhandled-future warning.
+        choice_future.add_done_callback(self._drain_choice_future)
         return ApprovalRequest(action=action, future=future)
 
     def offer(self, data: dict[str, Any]) -> None:
@@ -143,33 +109,21 @@ class InteractiveApprovalProvider:
             return
         options = self._options_factory(data)
         if options:
-            self.pending.options = options
-            self.pending.selected = 0
-        self._changed()
+            self.interaction.replace_options(self._choices(options))
 
     # -------------------------------------------------------------------- answer
     def resolve(self, scope: str | None = None, *, note: str = "") -> bool:
         pending = self.pending
         if pending is None:
             return False
-        chosen = scope or pending.current[0]
-        if not pending.resolve(scope, note=note):
-            return False
-        self.history.append((pending.action.describe(), chosen))
-        self.pending = None
-        self.state.approval = None
-        self._changed()
-        return True
+        self._note = note
+        return self.interaction.resolve(scope)
 
     def move(self, delta: int) -> None:
-        if self.pending is not None:
-            self.pending.move(delta)
-            self._changed()
+        self.interaction.move(delta)
 
     def accept_selection(self) -> bool:
-        if self.pending is None:
-            return False
-        return self.resolve(self.pending.current[0])
+        return self.interaction.accept_selection()
 
     def reject(self) -> bool:
         return self.resolve("reject")
@@ -185,13 +139,8 @@ class InteractiveApprovalProvider:
         pending = self.pending
         if pending is None:
             return False
-        if not pending.future.done():
-            pending.future.set_result(Approval(scope="reject", note="the turn was cancelled"))
-        self.history.append((pending.action.describe(), "cancelled"))
-        self.pending = None
-        self.state.approval = None
-        self._changed()
-        return True
+        self._aborting = True
+        return self.interaction.cancel("the turn was cancelled")
 
     @property
     def waiting(self) -> bool:
@@ -199,39 +148,43 @@ class InteractiveApprovalProvider:
 
     @property
     def can_answer(self) -> bool:
-        """Whether a question raised *right now* would reach a human.
+        return self.interaction.can_answer
 
-        The provider exists as soon as the app is constructed, but the application
-        that dispatches the keys only runs inside :meth:`MiniAgentApp.prompt_loop`.
-        Outside it (the pipe-driven legacy loop, tests) a question would sit on a
-        future nobody can resolve, so callers ask this first.
-        """
+    @staticmethod
+    def _choices(options: list[tuple[str, str, str]]) -> list[Choice]:
+        return [Choice(value=scope, label=label) for scope, label, _key in options]
 
-        return self._answerable()
-
-    # ------------------------------------------------------------------- display
-    def status_fragments(self) -> list[tuple[str, str]]:
-        """The prompt shown in the status line while a question is open."""
-
+    def _selected(self, choice: Choice) -> None:
         pending = self.pending
         if pending is None:
-            return []
-        fragments: list[tuple[str, str]] = [
-            ("class:approval", " ⚠ permission "),
-            ("class:approval-action", f"{pending.action.describe()} "),
-        ]
-        for index, (scope, label, key) in enumerate(pending.options):
-            marker = "▸" if index == pending.selected else " "
-            style = "class:approval-choice" if index == pending.selected else "class:approval-dim"
-            fragments.append((style, f"{marker}{key}){label} "))
-        return fragments
+            return
+        if not pending.future.done():
+            pending.future.set_result(Approval(scope=choice.value, note=self._note))
+        self.history.append((pending.action.describe(), choice.value))
+        self.pending = None
+        self._note = ""
 
-    # -------------------------------------------------------------------- wiring
-    def _changed(self) -> None:
-        if self.activity is not None:
-            self.activity("waiting for your approval" if self.waiting else "")
-        if self.on_change is not None:
-            self.on_change()
+    def _cancelled(self, note: str) -> None:
+        pending = self.pending
+        if pending is None:
+            return
+        if not pending.future.done():
+            pending.future.set_result(Approval(scope="reject", note=note))
+        self.history.append(
+            (pending.action.describe(), "cancelled" if self._aborting else "reject")
+        )
+        self.pending = None
+        self._note = ""
+        self._aborting = False
+
+    @staticmethod
+    def _drain_choice_future(future: asyncio.Future) -> None:
+        if future.cancelled():
+            return
+        try:
+            future.exception()
+        except asyncio.CancelledError:  # pragma: no cover - defensive
+            pass
 
 
 class PlainApprovalProvider:
@@ -328,8 +281,6 @@ class PlainApprovalProvider:
 
 
 __all__ = [
-    "CHOICES",
-    "CHOICE_KEYS",
     "PendingApproval",
     "InteractiveApprovalProvider",
     "PlainApprovalProvider",

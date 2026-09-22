@@ -8,7 +8,7 @@ sections 3, 14 and 25.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from harness.cli.cells.base import HistoryCell
@@ -16,72 +16,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 @dataclass
 class TextAreaState:
-    """Editable buffer: the single source of truth for user input."""
+    """Latest prompt_toolkit buffer snapshot used by derived UI state."""
 
     text: str = ""
     cursor: int = 0
 
-    # ------------------------------------------------------------------ editing
     def set_text(self, text: str, cursor: int | None = None) -> None:
         self.text = text
         self.cursor = len(text) if cursor is None else max(0, min(cursor, len(text)))
-
-    def insert(self, chunk: str) -> None:
-        self.text = self.text[: self.cursor] + chunk + self.text[self.cursor :]
-        self.cursor += len(chunk)
-
-    def backspace(self) -> None:
-        """Delete one *grapheme* before the cursor, not one UTF-8 byte."""
-
-        if self.cursor <= 0:
-            return
-        start = _previous_boundary(self.text, self.cursor)
-        self.text = self.text[:start] + self.text[self.cursor :]
-        self.cursor = start
-
-    def delete(self) -> None:
-        if self.cursor >= len(self.text):
-            return
-        end = _next_boundary(self.text, self.cursor)
-        self.text = self.text[: self.cursor] + self.text[end:]
-
-    def delete_word_backward(self) -> None:
-        if self.cursor <= 0:
-            return
-        index = self.cursor
-        while index > 0 and self.text[index - 1].isspace():
-            index -= 1
-        while index > 0 and not self.text[index - 1].isspace():
-            index -= 1
-        self.text = self.text[:index] + self.text[self.cursor :]
-        self.cursor = index
-
-    def move(self, delta: int) -> None:
-        self.cursor = max(0, min(self.cursor + delta, len(self.text)))
-
-    def move_home(self) -> None:
-        self.cursor = 0
-
-    def move_end(self) -> None:
-        self.cursor = len(self.text)
-
-    def clear(self) -> None:
-        self.text = ""
-        self.cursor = 0
-
-    @property
-    def before_cursor(self) -> str:
-        return self.text[: self.cursor]
-
-    @property
-    def after_cursor(self) -> str:
-        return self.text[self.cursor :]
-
-    def render(self, prompt: str = "> ") -> str:
-        """Plain two-line rendering of buffer + visual cursor (used by tests)."""
-
-        return f"{prompt}{self.text}\n{' ' * (len(prompt) + self.cursor)}^"
-
 
 @dataclass
 class StreamState:
@@ -99,13 +41,6 @@ class StreamState:
     @property
     def pending_source(self) -> str:
         return self.source[self.committed_offset :]
-
-
-class CommandMatchLike(Protocol):
-    command: Any
-    matched_indices: list[int]
-    score: int
-    order: int
 
 
 @dataclass
@@ -183,11 +118,6 @@ class CommandPopupState:
         self.visible = False
 
 
-@runtime_checkable
-class Renderable(Protocol):
-    def render(self, console: Any) -> None: ...
-
-
 @dataclass
 class AppState:
     """Everything the renderer needs for one frame."""
@@ -202,12 +132,8 @@ class AppState:
     assistant_stream: StreamState | None = None
     dirty: bool = True
     on_change: Callable[[], None] | None = None
-    #: the approval question currently on screen, if any (see
-    #: :class:`harness.cli.approval.PendingApproval`).  Kept here so the renderer
-    #: and the key bindings read one source of truth.
-    approval: Any = None
-    #: the previously running cell, kept only for debugging/telemetry
-    _stale_active: HistoryCell | None = None
+    #: the single user choice currently on screen (approval or model question)
+    interaction: Any = None
 
     # ------------------------------------------------------------- history cells
     def commit(self, cell: HistoryCell | None = None) -> None:
@@ -229,8 +155,6 @@ class AppState:
         is what put the same ToolCell into history twice.
         """
 
-        if self.active_cell is not None and self.active_cell is not cell:
-            self._stale_active = self.active_cell
         self.active_cell = cell
         self.touch()
 
@@ -271,52 +195,10 @@ class AppState:
             self.touch()
             return
 
-    #: backwards-compatible name (older call sites/tests)
-    def toggle_latest_tool(self) -> None:
-        self.toggle_latest_expandable()
-
     def touch(self) -> None:
         self.dirty = True
         if self.on_change is not None:
             self.on_change()
-
-
-def _previous_boundary(text: str, index: int) -> int:
-    """Step back one grapheme cluster (combining marks / ZWJ emoji aware)."""
-
-    if index <= 0:
-        return 0
-    position = index - 1
-    # consume trailing combiners
-    while position > 0 and _is_combining(text[position]):
-        position -= 1
-    # consume a joined sequence (emoji ZWJ, variation selectors)
-    if position > 0 and text[position - 1] == "\u200d":
-        position -= 1
-        while position > 0 and _is_combining(text[position]):
-            position -= 1
-        if position > 0:
-            position -= 1
-    return position
-
-
-def _next_boundary(text: str, index: int) -> int:
-    if index >= len(text):
-        return len(text)
-    position = index + 1
-    while position < len(text) and _is_combining(text[position]):
-        position += 1
-    if position < len(text) and text[position] == "\u200d":
-        position += 1
-        while position < len(text) and _is_combining(text[position]):
-            position += 1
-    return position
-
-
-def _is_combining(char: str) -> bool:
-    import unicodedata
-
-    return unicodedata.combining(char) != 0 or char in ("\ufe0f", "\ufe0e")
 
 
 __all__ = [
@@ -324,5 +206,4 @@ __all__ = [
     "StreamState",
     "CommandPopupState",
     "AppState",
-    "Renderable",
 ]

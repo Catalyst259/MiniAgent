@@ -14,8 +14,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from harness.cli.cells.base import AssistantCell, HistoryCell, InfoCell, ToolCell, UserCell
-from harness.cli.render.theme import DEFAULT_THEME, Theme
+from harness.cli.cells.base import AssistantCell, ErrorCell, HistoryCell, InfoCell
+from harness.cli.presentation import PresentationOptions, present_cell, presentation_key
+from harness.cli.render.rich_adapter import render_presentation
 from harness.cli.sanitize import clip_to_width, safe_text
 from harness.cli.streaming.assistant_stream import AssistantStream
 
@@ -25,7 +26,6 @@ class Renderer:
     """Consumes cells; never calls a tool, a model or LangGraph."""
 
     console: Any = None
-    theme: Theme = DEFAULT_THEME
     stream: AssistantStream = field(default_factory=AssistantStream)
     #: where the live region is written (defaults to stdout at construction)
     output: Any = None
@@ -36,8 +36,7 @@ class Renderer:
     _last_tail: str = ""
     _drawn_committed: int = 0
     _last_tail_at: float = 0.0
-    _printed_cells: list = field(default_factory=list)
-    _last_tool_line: str = ""
+    _printed_states: set[str] = field(default_factory=set)
     _pending_tail: str = ""
     #: rows of raw streamed preview currently on screen (they are replaced by
     #: the canonical rendering, never printed twice)
@@ -65,7 +64,7 @@ class Renderer:
 
         console = self.console if isinstance(self.console, Console) else self.console
         console.print(
-            f"[{self.theme.banner}]MiniAgent[/{self.theme.banner}] "
+            "[bold cyan]MiniAgent[/bold cyan] "
             "[dim]· LangGraph + ModelGateway + MCP + Qdrant[/dim]"
         )
         console.print("[dim]type / for commands, ! for a shell command, Ctrl+C to interrupt[/dim]")
@@ -86,21 +85,19 @@ class Renderer:
     def render_cell(self, cell: HistoryCell) -> None:
         """Render one cell.
 
-        A tool announces itself while running and prints its result when it
-        finishes, so it renders once per *state*.  Every other cell renders once
-        per object, whatever the call site.
+        Mutable cells announce their running and finished states once each;
+        immutable cells render once per object, whatever the call site.
         """
 
-        if isinstance(cell, ToolCell):
-            self._close_tail()
-            signature = cell.header_key()
-            if signature and signature == self._last_tool_line:
-                return  # duplicate event for the same state
-            self._last_tool_line = signature
-        elif any(cell is printed for printed in self._printed_cells):
+        self._close_tail()
+        signature = presentation_key(cell)
+        if signature in self._printed_states:
             return
-        cell.render(self.console)
-        self._printed_cells.append(cell)
+        render_presentation(
+            self.console,
+            present_cell(cell, PresentationOptions()),
+        )
+        self._printed_states.add(signature)
 
     def flush(self, cells: list[HistoryCell]) -> None:
         """Print every cell that has not been printed yet."""
@@ -111,13 +108,11 @@ class Renderer:
 
     def info(self, message: str) -> None:
         self._close_tail()
-        InfoCell(message=message).render(self.console)
+        self.render_cell(InfoCell(message=message))
 
     def error(self, message: str, *, fatal: bool = False) -> None:
-        from harness.cli.cells.base import ErrorCell
-
         self._close_tail()
-        ErrorCell(message=message, fatal=fatal).render(self.console)
+        self.render_cell(ErrorCell(message=message, fatal=fatal))
 
     def rule(self, title: str = "") -> None:
         self._close_tail()
@@ -240,7 +235,6 @@ class Renderer:
         self._pending_tail = ""
         final = self.stream.finish(source)
         self._close_tail()
-        self._last_tool_line = ""
         return final
 
     def render_assistant(self, source: str, reasoning: str | None = None) -> AssistantCell:
@@ -248,7 +242,7 @@ class Renderer:
 
         self._close_tail()
         cell = AssistantCell(source=source, reasoning=reasoning)
-        cell.render(self.console)
+        render_presentation(self.console, present_cell(cell))
         return cell
 
     def final_answer(self, answer: str | AssistantCell, *, status: str = "") -> None:
@@ -262,9 +256,9 @@ class Renderer:
             self.console.print("[bold green]── final answer ──[/bold green]")
         if not cell.source.strip():
             self.console.print("[dim](no answer)[/dim]")
-        elif not any(cell is printed for printed in self._printed_cells):
-            cell.render(self.console)
-            self._printed_cells.append(cell)
+        elif presentation_key(cell) not in self._printed_states:
+            render_presentation(self.console, present_cell(cell))
+            self._printed_states.add(presentation_key(cell))
         self.console.print()
 
     # ------------------------------------------------------------------ helpers
@@ -281,10 +275,4 @@ class Renderer:
         return self._committed
 
 
-def render_prompt_preview(composer_text: str, cursor: int) -> str:
-    """Two-line preview used by tests and by ``--plain`` debugging."""
-
-    return UserCell(text=composer_text).text + f"  (cursor={cursor})"
-
-
-__all__ = ["Renderer", "render_prompt_preview"]
+__all__ = ["Renderer"]

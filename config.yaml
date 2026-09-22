@@ -73,6 +73,8 @@ permissions:
     # read-only tool ceiling and cannot ask for anything itself.
     - tool: delegate
       permission: allow
+    - tool: request_user_input
+      permission: allow
     # --- changing the workspace needs consent ---------------------------
     - tool: write_file
       permission: ask

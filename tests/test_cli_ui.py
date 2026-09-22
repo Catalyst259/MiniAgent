@@ -30,7 +30,7 @@ from harness.cli.composer.slash_commands import CommandRegistry
 from harness.cli.events_bridge import EventBridge, translate
 from harness.cli.render.renderer import Renderer
 from harness.cli.state import AppState, CommandPopupState, StreamState, TextAreaState
-from harness.cli.streaming import AssistantStream, ToolStream
+from harness.cli.streaming import AssistantStream
 from harness.infra.config import HarnessConfig
 
 
@@ -62,6 +62,16 @@ def text_of(console: RecordingConsole) -> str:
         else:
             chunks.append(str(entry))
     return "\n".join(chunks)
+
+
+def render_cells(*cells):
+    """Exercise the public renderer/presentation seam, not cell internals."""
+
+    console = RecordingConsole()
+    renderer = Renderer(console=console, use_live_tail=False)
+    for cell in cells:
+        renderer.render_cell(cell)
+    return console
 
 
 # --------------------------------------------------------------- fuzzy matching
@@ -222,77 +232,6 @@ def test_popup_renders_selection_and_highlight():
 
 
 # --------------------------------------------------------------------- composer
-def test_textarea_insert_and_backspace():
-    state = TextAreaState()
-    state.set_text("hello world", cursor=len("hello world"))
-    state.backspace()
-    assert state.text == "hello worl" and state.cursor == len("hello worl")
-    state.insert("d")
-    assert state.text == "hello world" and state.cursor == len("hello world")
-
-
-def test_textarea_backspace_at_start_is_a_noop():
-    state = TextAreaState()
-    state.set_text("abc", cursor=0)
-    state.backspace()
-    assert state.text == "abc" and state.cursor == 0
-
-
-def test_textarea_delete_forward_and_word_delete():
-    state = TextAreaState()
-    state.set_text("hello world", cursor=5)
-    state.delete()
-    assert state.text == "helloworld"
-    state.set_text("hello world", cursor=len("hello world"))
-    state.delete_word_backward()
-    assert state.text == "hello "
-
-
-def test_textarea_moves_and_bounds():
-    state = TextAreaState()
-    state.set_text("abc")
-    state.move_home()
-    assert state.cursor == 0
-    state.move(-5)
-    assert state.cursor == 0
-    state.move_end()
-    assert state.cursor == 3
-    state.move(10)
-    assert state.cursor == 3
-
-
-def test_textarea_unicode_backspace_is_grapheme_aware():
-    # Chinese characters are one grapheme each
-    state = TextAreaState()
-    state.set_text("你好")
-    state.backspace()
-    assert state.text == "你"
-    # ASCII characters are also one grapheme each
-    state.set_text("ab")
-    state.backspace()
-    assert state.text == "a"
-    # a combining accent is deleted together with its base character
-    state.set_text("e\u0301x")
-    state.backspace()
-    assert state.text == "e\u0301"
-    state.backspace()
-    assert state.text == ""
-
-
-def test_textarea_render_shows_cursor():
-    state = TextAreaState()
-    state.set_text("hi", cursor=1)
-    assert state.render() == "> hi\n   ^"
-
-
-def test_composer_submit_clears_and_returns_text():
-    composer = Composer()
-    composer.sync_from_buffer("  do the thing  ")
-    assert composer.submit_text() == "do the thing"
-    assert composer.state.text == ""
-    assert composer.submit_text() is None
-
-
 def test_composer_prompt_fragments_include_popup_rows():
     composer = Composer(
         state=TextAreaState(),
@@ -310,58 +249,58 @@ def test_composer_prompt_fragments_include_popup_rows():
 
 # ------------------------------------------------------------------------ cells
 def test_user_cell_renders_prompt():
-    console = RecordingConsole()
-    UserCell(text="fix the bug").render(console)
+    console = render_cells(UserCell(text="fix the bug"))
     assert "fix the bug" in text_of(console)
 
 
 def test_assistant_cell_renders_markdown():
-    console = RecordingConsole()
-    AssistantCell(source="# Title\n\n- item").render(console)
+    console = render_cells(AssistantCell(source="# Title\n\n- item"))
     assert console.types() == ["Markdown"]
 
 
 def test_tool_cell_lifecycle_and_preview():
-    console = RecordingConsole()
     cell = ToolCell(call_id="1", tool="shell", arguments={"command": "pytest"})
     assert cell.status is ToolStatus.RUNNING and cell.glyph == "◐"
-    cell.render(console)
+    console = render_cells(cell)
     assert "shell" in text_of(console) and "pytest" in text_of(console)
 
     cell.append("line one\n")
     cell.finish(True, text="line one\nline two\n", duration_ms=42)
     assert cell.status is ToolStatus.DONE
-    console = RecordingConsole()
-    cell.render(console)
+    console = render_cells(cell)
     rendered = text_of(console)
     assert "line one" in rendered and "42 ms" in rendered
 
 
 def test_tool_cell_truncates_long_output():
-    console = RecordingConsole()
     cell = ToolCell(call_id="1", tool="grep", max_preview_lines=3)
     cell.finish(True, text="\n".join(f"line {index}" for index in range(10)))
-    cell.render(console)
+    console = render_cells(cell)
     rendered = text_of(console)
     assert "line 0" in rendered and "line 9" not in rendered
     assert "7 more line(s)" in rendered
 
 
 def test_tool_cell_failure_renders_error():
-    console = RecordingConsole()
     cell = ToolCell(call_id="1", tool="apply_patch")
     cell.fail("hunk did not match")
-    cell.render(console)
+    console = render_cells(cell)
     assert cell.status is ToolStatus.FAILED and cell.glyph == "✗"
     assert "hunk did not match" in text_of(console)
 
 
 def test_subagent_and_small_cells_render():
-    console = RecordingConsole()
-    SubAgentCell(agent="explorer", task="find auth", summary="## Findings\n- auth.py", iterations=3).render(console)
-    SkillCell(name="debugging").render(console)
-    InfoCell(message="hello").render(console)
-    ErrorCell(message="boom", fatal=True).render(console)
+    console = render_cells(
+        SubAgentCell(
+            agent="explorer",
+            task="find auth",
+            summary="## Findings\n- auth.py",
+            iterations=3,
+        ),
+        SkillCell(name="debugging"),
+        InfoCell(message="hello"),
+        ErrorCell(message="boom", fatal=True),
+    )
     rendered = text_of(console)
     for expected in ("explorer", "find auth", "auth.py", "debugging", "hello", "boom"):
         assert expected in rendered
@@ -410,24 +349,6 @@ def test_assistant_stream_preview_bounds_tail():
     preview = stream.preview(tail_lines=6)
     assert preview.startswith("stable line")
     assert preview.endswith("tail")
-
-
-def test_tool_stream_tracks_running_cells():
-    stream = ToolStream()
-    cell = stream.start("call-1", "shell", {"command": "ls"})
-    assert cell.status is ToolStatus.RUNNING
-    stream.append("call-1", "output\n")
-    assert cell.output == "output\n"
-    finished = stream.finish("call-1", ok=True, text="done", duration_ms=5)
-    assert finished is cell and finished.status is ToolStatus.DONE
-    assert stream.running() == []
-
-
-def test_tool_stream_failure_marks_cell():
-    stream = ToolStream()
-    stream.start("c", "grep")
-    cell = stream.finish("c", ok=False, error="bad regex")
-    assert cell is not None and cell.status is ToolStatus.FAILED and cell.error == "bad regex"
 
 
 # --------------------------------------------------------------------- renderer

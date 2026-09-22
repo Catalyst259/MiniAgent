@@ -2,13 +2,13 @@
 
 Responsibilities (``CLI_Design.md`` sections 7, 8, 15):
 
-* own the :class:`~harness.cli.state.TextAreaState` (the real input data),
+* snapshot prompt_toolkit's buffer into :class:`~harness.cli.state.TextAreaState`,
 * route keys: popup first when it is visible, otherwise the text area,
 * call ``sync_popups()`` after every change so the candidate list follows the
   buffer and cursor.
 
-The prompt_toolkit buffer is only a *mirror* of the text area state used for
-rendering; every key handler mutates the composer state and then writes it back.
+prompt_toolkit owns editing and grapheme/cursor semantics.  The composer owns
+only derived slash-command state, avoiding a second editor implementation.
 """
 
 from __future__ import annotations
@@ -51,24 +51,6 @@ class Composer:
     # ------------------------------------------------------------------- editing
     def sync_from_buffer(self, text: str) -> None:
         self.state.set_text(text)
-
-    def insert(self, chunk: str) -> None:
-        self.state.insert(chunk)
-
-    def backspace(self) -> None:
-        self.state.backspace()
-
-    def submit_text(self) -> str | None:
-        """Return the submitted line and clear the buffer, or ``None`` if empty."""
-
-        text = self.state.text.strip()
-        if not text:
-            self.state.clear()
-            return None
-        self.state.clear()
-        if self.popup is not None:
-            self.popup.sync("")
-        return text
 
     # -------------------------------------------------------------------- popups
     def sync_popups(self, text: str | None = None) -> None:
@@ -165,7 +147,7 @@ def build_key_bindings(
     on_submit=None,
     on_toggle_tool=None,
     on_history_scroll=None,
-    approval=None,
+    interaction=None,
 ):
     """Key routing: popup owns navigation, the text area owns editing.
 
@@ -178,10 +160,9 @@ def build_key_bindings(
     ``KeyboardInterrupt`` out of the prompt so the caller can count consecutive
     interrupts and quit.
 
-    ``approval`` is a :class:`~harness.cli.approval.InteractiveApprovalProvider`.
-    While a permission question is open its keys take priority over the buffer,
-    which is why they carry an ``approval_pending`` filter: without it, typing a
-    "2" in the middle of a sentence would answer a question the user never saw.
+    ``interaction`` owns every modal choice, including permission approval.
+    Its filter keeps digits and Enter in the composer whenever no question is
+    visible.
     """
 
     from prompt_toolkit.application.current import get_app
@@ -189,7 +170,10 @@ def build_key_bindings(
     from prompt_toolkit.key_binding import KeyBindings
 
     popup_visible = Condition(lambda: bool(composer.popup and composer.popup.visible))
-    approval_pending = Condition(lambda: bool(approval is not None and approval.waiting))
+    interaction_pending = Condition(
+        lambda: bool(interaction is not None and interaction.waiting)
+    )
+    modal_pending = interaction_pending
     kb = KeyBindings()
 
     def _refill(buffer, text: str) -> None:
@@ -230,37 +214,33 @@ def build_key_bindings(
         if composer.popup and composer.popup.visible:
             composer.popup.dismiss()
 
-    # ------------------------------------------------------- permission prompt
-    # Carries its own filter, so these bindings only exist while a question is
-    # open.  Digits are safe to capture then: the question is modal, and the
-    # composer keeps whatever the user had typed.
-    if approval is not None:
-        from harness.cli.approval import CHOICE_KEYS
-
-        def _choice_for(scope: str):
+    if interaction is not None:
+        def _interaction_choice(index: int):
             def _choice(event) -> None:  # noqa: ANN001
-                approval.resolve(scope)
+                interaction.resolve_index(index)
 
             return _choice
 
-        for key, scope in CHOICE_KEYS.items():
-            kb.add(key, filter=approval_pending)(_choice_for(scope))
+        for index, key in enumerate(("1", "2", "3", "4")):
+            kb.add(key, filter=interaction_pending)(_interaction_choice(index))
 
-        @kb.add("left", filter=approval_pending)
-        def _approval_left(event) -> None:  # noqa: ANN001
-            approval.move(-1)
+        @kb.add("left", filter=interaction_pending)
+        @kb.add("up", filter=interaction_pending)
+        def _interaction_previous(event) -> None:  # noqa: ANN001
+            interaction.move(-1)
 
-        @kb.add("right", filter=approval_pending)
-        def _approval_right(event) -> None:  # noqa: ANN001
-            approval.move(1)
+        @kb.add("right", filter=interaction_pending)
+        @kb.add("down", filter=interaction_pending)
+        def _interaction_next(event) -> None:  # noqa: ANN001
+            interaction.move(1)
 
-        @kb.add("enter", filter=approval_pending)
-        def _approval_accept(event) -> None:  # noqa: ANN001
-            approval.accept_selection()
+        @kb.add("enter", filter=interaction_pending)
+        def _interaction_accept(event) -> None:  # noqa: ANN001
+            interaction.accept_selection()
 
-        @kb.add("c-r", filter=approval_pending)
-        def _approval_reject(event) -> None:  # noqa: ANN001
-            approval.reject()
+        @kb.add("c-r", filter=interaction_pending)
+        def _interaction_cancel(event) -> None:  # noqa: ANN001
+            interaction.cancel()
 
     @kb.add("c-c")
     def _interrupt(event) -> None:  # noqa: ANN001
@@ -331,10 +311,10 @@ def build_key_bindings(
                     binding.call(event)
                     return
 
-    # Enter and Escape+Enter step aside while a permission question is open:
-    # the approval bindings above already own Enter, and registration order would
+    # Enter and Escape+Enter step aside while a modal question is open:
+    # the interaction binding above already owns Enter, and registration order would
     # otherwise let this one win (prompt_toolkit calls the *last* enabled match).
-    @kb.add("enter", filter=~approval_pending)
+    @kb.add("enter", filter=~modal_pending)
     def _submit(event) -> None:  # noqa: ANN001
         # Enter submits *the buffer*; it must never just accept a completion,
         # or the prompt would never return and no input would reach the agent.
@@ -365,7 +345,7 @@ def build_key_bindings(
         composer.sync_from_buffer(event.current_buffer.text)
         composer.sync_popups()
 
-    @kb.add("escape", "enter", filter=~approval_pending)
+    @kb.add("escape", "enter", filter=~modal_pending)
     def _newline(event) -> None:  # noqa: ANN001
         event.current_buffer.insert_text("\n")
 

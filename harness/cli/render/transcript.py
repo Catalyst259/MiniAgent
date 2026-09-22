@@ -23,29 +23,16 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from rich.markdown import Markdown
 
-from harness.cli.cells import (
-    AssistantCell,
-    ErrorCell,
-    HistoryCell,
-    InfoCell,
-    SkillCell,
-    SubAgentCell,
-    ToolCell,
-    ToolStatus,
-    UserCell,
+from harness.cli.cells import HistoryCell
+from harness.cli.presentation import (
+    CellPresentation,
+    Line,
+    MarkdownBlock,
+    PresentationOptions,
+    present_cell,
 )
-from harness.cli.cells.base import expand_key, format_arguments
 from harness.cli.render.theme import build_markdown_console
-from harness.cli.sanitize import clip_to_width, display_width, safe_text
-
-#: lines shown for a collapsed tool body / reasoning block
-COLLAPSED_TOOL_LINES = 3
-COLLAPSED_SUBAGENT_LINES = 3
-COLLAPSED_REASONING_LINES = 6
-#: lines of the *tail* shown while a tool is still running
-RUNNING_TAIL_LINES = 3
-#: hard cap for one expanded block: a 100k-line file must not freeze the UI
-MAX_EXPANDED_LINES = 400
+from harness.cli.sanitize import safe_text
 
 #: OSC sequences (hyperlinks, window titles) that prompt_toolkit's ANSI parser
 #: would otherwise leave behind as literal text.
@@ -186,6 +173,14 @@ class TranscriptControl(FormattedTextControl):
             fragments.append(("class:activity", f"· {safe_text(activity)}\n"))
         if not fragments:
             fragments.append(("class:transcript-dim", ""))
+        else:
+            # A trailing newline creates a real extra UIContent row in
+            # prompt_toolkit.  Cells use newlines *between* rows, but the final
+            # row must not terminate with one or the composer is separated from
+            # the transcript by a phantom blank line.
+            last = fragments[-1]
+            if last[1].endswith("\n"):
+                fragments[-1] = (last[0], last[1][:-1], *last[2:])
         return fragments
 
     @property
@@ -201,128 +196,22 @@ class TranscriptControl(FormattedTextControl):
         return getattr(self.state, "expanded_tool_ids", set())
 
     def _cell_fragments(self, cell: HistoryCell) -> StyleAndTextTuples:
-        if isinstance(cell, UserCell):
-            return _prefixed_lines("› ", safe_text(cell.text), "class:user")
-        if isinstance(cell, AssistantCell):
-            return self._assistant_fragments(cell)
-        if isinstance(cell, ToolCell):
-            return self._tool_fragments(cell)
-        if isinstance(cell, SubAgentCell):
-            return self._subagent_fragments(cell)
-        if isinstance(cell, SkillCell):
-            if cell.ok:
-                return [("class:skill", f"◆ skill loaded: {safe_text(cell.name)}\n")]
-            return [("class:error", f"◆ skill failed: {safe_text(cell.name)}\n")]
-        if isinstance(cell, ErrorCell):
-            style = "class:error-fatal" if cell.fatal else "class:error"
-            return _prefixed_lines("!! ", safe_text(cell.message), style)
-        if isinstance(cell, InfoCell):
-            return _prefixed_lines("", safe_text(cell.message), "class:info")
-        return [("class:transcript", f"{safe_text(str(cell))}\n")]
-
-    # --------------------------------------------------------------- assistants
-    def _assistant_fragments(self, cell: AssistantCell) -> StyleAndTextTuples:
-        parts: StyleAndTextTuples = []
-        if self.final_cell is not None and cell is self.final_cell():
-            parts.append(("class:final-marker", "── final answer ──\n"))
-        if cell.reasoning:
-            parts.extend(self._reasoning_fragments(cell))
-        if cell.source:
-            parts.extend(self._source_fragments(cell))
-        return parts
-
-    def _source_fragments(self, cell: AssistantCell) -> StyleAndTextTuples:
-        """Markdown for complete lines; the mutable tail stays plain text.
-
-        Re-rendering half a Markdown document on every delta is what made an
-        unterminated code fence swallow the rest of the answer.
-        """
-
-        source = cell.source
-        if cell.complete or "\n" not in source.strip():
-            return self._markdown(source)
-        head, _, tail = source.rpartition("\n")
-        parts = self._markdown(head + "\n") if head else []
-        if tail:
-            parts.append(("class:assistant", f"{safe_text(tail)}\n"))
-        return parts
-
-    def _reasoning_fragments(self, cell: AssistantCell) -> StyleAndTextTuples:
-        text = safe_text(cell.reasoning or "").strip()
-        if not text:
-            return []
-        lines = text.splitlines()
-        expanded = expand_key(cell) in self._expanded()
-        limit = MAX_EXPANDED_LINES if expanded else COLLAPSED_REASONING_LINES
-        shown = lines[:limit]
-        parts: StyleAndTextTuples = [("class:reasoning", "∴ thinking\n")]
-        for line in shown:
-            parts.append(("class:reasoning", f"  {_clip(line, self.width - 4)}\n"))
-        if len(lines) > limit:
-            parts.append(
-                (
-                    "class:reasoning",
-                    f"  … {len(lines) - limit} more line(s) — Ctrl+O 折叠/展开\n",
-                )
-            )
-        return parts
-
-    # -------------------------------------------------------------------- tools
-    def _tool_fragments(self, cell: ToolCell) -> StyleAndTextTuples:
-        style = {
-            ToolStatus.RUNNING: "class:tool-running",
-            ToolStatus.DONE: "class:tool-done",
-            ToolStatus.FAILED: "class:tool-failed",
-        }[cell.status]
-        header = f"{cell.glyph} {safe_text(cell.tool)}"
-        if cell.arguments:
-            header += f"  {_clip(format_arguments(cell.arguments), self.width - 6)}"
-        if cell.status is ToolStatus.RUNNING:
-            header += "  …"
-        elif cell.duration_ms:
-            header += f"  ({cell.duration_ms} ms)"
-        parts: StyleAndTextTuples = [(style, header + "\n")]
-
-        if cell.status is ToolStatus.RUNNING and not cell.error:
-            # live feedback: the tail of what the tool has produced so far
-            lines = [line for line in cell.body_lines() if line.strip()][-RUNNING_TAIL_LINES:]
-            for line in lines:
-                parts.append(("class:tool-body", f"  │ {_clip(line, self.width - 4)}\n"))
-            return parts
-
-        expanded = cell.call_id in self._expanded() if cell.call_id else False
-        limit = MAX_EXPANDED_LINES if expanded else COLLAPSED_TOOL_LINES
-        lines, hidden = cell.preview_body(limit)
-        parts.extend(
-            ("class:tool-body", f"  │ {_clip(line, self.width - 4)}\n") for line in lines
+        presentation = present_cell(
+            cell,
+            PresentationOptions(
+                width=self.width,
+                expanded_keys=frozenset(self._expanded()),
+                final=self.final_cell is not None and cell is self.final_cell(),
+                tool_preview_lines=3,
+                subagent_preview_lines=3,
+                reasoning_preview_lines=6,
+                running_tail_lines=3,
+                reasoning_header=True,
+                expand_hint=True,
+                streaming_tail_plain=True,
+            ),
         )
-        if hidden:
-            hint = "" if expanded else "  (Ctrl+O 展开)"
-            parts.append(("class:tool-body", f"  │ … {hidden} more line(s){hint}\n"))
-        return parts
-
-    # ---------------------------------------------------------------- subagents
-    def _subagent_fragments(self, cell: SubAgentCell) -> StyleAndTextTuples:
-        style = "class:subagent" if cell.ok else "class:error"
-        header = f"{'⇢' if cell.ok else '✗'} {safe_text(cell.agent)}"
-        task = (cell.task or "").splitlines()[0] if cell.task else ""
-        if task:
-            header += f"  {_clip(task, max(10, self.width - len(header) - 20))}"
-        if cell.iterations:
-            header += f"  ({cell.iterations} iterations)"
-        if cell.status is ToolStatus.RUNNING:
-            header += "  …"
-        parts: StyleAndTextTuples = [(style, header + "\n")]
-        if cell.summary:
-            expanded = expand_key(cell) in self._expanded()
-            limit = MAX_EXPANDED_LINES if expanded else COLLAPSED_SUBAGENT_LINES
-            lines, hidden = cell.preview(cell.summary, limit)  # type: ignore[arg-type]
-            for line in safe_text(lines).splitlines():
-                parts.append(("class:tool-body", f"  │ {_clip(line, self.width - 4)}\n"))
-            if hidden:
-                hint = "" if expanded else "  (Ctrl+O 展开)"
-                parts.append(("class:tool-body", f"  │ … {hidden} more line(s){hint}\n"))
-        return parts
+        return _to_fragments(presentation, self._markdown)
 
     # ---------------------------------------------------------------- markdown
     def _markdown(self, source: str) -> StyleAndTextTuples:
@@ -341,23 +230,48 @@ __all__ = ["TranscriptControl", "TranscriptPane"]
 
 
 # --------------------------------------------------------------------- helpers
-def _prefixed_lines(prefix: str, text: str, style: str) -> StyleAndTextTuples:
-    """Render user/error/info text with the prefix on the first line only."""
+_ROLE_STYLES = {
+    "user": "class:user",
+    "assistant": "class:assistant",
+    "reasoning": "class:reasoning",
+    "final-marker": "class:final-marker",
+    "tool-running": "class:tool-running",
+    "tool-running-name": "class:tool-running bold",
+    "tool-done": "class:tool-done",
+    "tool-done-name": "class:tool-done bold",
+    "tool-failed": "class:tool-failed",
+    "tool-failed-name": "class:tool-failed bold",
+    "body-prefix": "class:tool-body",
+    "tool-body": "class:tool-body",
+    "subagent": "class:subagent",
+    "subagent-name": "class:subagent bold",
+    "skill": "class:skill",
+    "info": "class:info",
+    "error": "class:error",
+    "error-fatal": "class:error-fatal",
+    "dim": "class:transcript-dim",
+    "text": "class:transcript",
+}
 
-    lines = text.split("\n") if text else [""]
+
+def _to_fragments(
+    presentation: CellPresentation,
+    markdown: Callable[[str], StyleAndTextTuples],
+) -> StyleAndTextTuples:
     parts: StyleAndTextTuples = []
-    for index, line in enumerate(lines):
-        marker = prefix if index == 0 else " " * len(prefix)
-        parts.append((style, f"{marker}{line}\n"))
+    for block in presentation.blocks:
+        if isinstance(block, MarkdownBlock):
+            parts.extend(markdown(block.source))
+            continue
+        if not isinstance(block, Line):  # pragma: no cover - closed union
+            continue
+        if not block.spans:
+            parts.append(("class:transcript", "\n"))
+            continue
+        for index, span in enumerate(block.spans):
+            ending = "\n" if index == len(block.spans) - 1 else ""
+            parts.append((_ROLE_STYLES.get(span.role, "class:transcript"), span.text + ending))
     return parts
-
-
-def _clip(line: str, width: int) -> str:
-    """Clip one line to the available columns so a long line is one row."""
-
-    if width <= 1 or display_width(line) <= width:
-        return line
-    return clip_to_width(line, width - 1) + "…"
 
 
 def _escape_angle_brackets(source: str) -> str:

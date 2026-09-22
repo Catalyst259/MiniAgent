@@ -14,7 +14,9 @@ function signatures, so both paths stay identical.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import inspect
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -105,8 +107,27 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     server = build_server(Path(args.root), max_output_chars=args.max_output_chars)
-    server.run(args.transport)
+    if args.transport == "stdio":
+        asyncio.run(_run_stdio(server))
+    else:
+        server.run(args.transport)
     return 0
+
+
+async def _run_stdio(server: Any) -> None:
+    """Run stdio while periodically advancing thread-delivered pipe reads."""
+
+    async def tick() -> None:
+        while True:
+            await asyncio.sleep(0.02)
+
+    ticker = asyncio.create_task(tick())
+    try:
+        await server.run_stdio_async()
+    finally:
+        ticker.cancel()
+        with suppress(asyncio.CancelledError):
+            await ticker
 
 
 if __name__ == "__main__":  # pragma: no cover - server entry point

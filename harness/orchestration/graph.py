@@ -71,6 +71,8 @@ class Orchestrator:
     tool_runtime: Any
     skill_loader: Any
     subagent_runtime: SubAgentRuntime
+    #: front-end adapter for the model-facing request_user_input native tool
+    interaction_provider: Any = None
     #: the permission gate (``harness.permission.PermissionGate``); ``None`` means
     #: no permission node is built and the loop behaves as it did before
     permission_gate: Any = None
@@ -87,6 +89,23 @@ class Orchestrator:
 
     # ------------------------------------------------------------------- wiring
     def build(self) -> Any:
+        # LangGraph sends synchronous route callbacks through an executor.  That
+        # extra thread boundary is unnecessary for these pure, constant-time
+        # decisions and can strand a batch run when the host event loop is not
+        # woken by executor completion.  Async adapters keep routing on the
+        # graph's event loop (the functions themselves remain easy to unit-test).
+        async def route_after_token_guard(state: AgentState) -> str:
+            return after_token_guard(state)
+
+        async def route_after_llm(state: AgentState) -> str:
+            return after_llm(state, self.termination_policy)
+
+        async def route_after_gate(state: AgentState) -> str:
+            return after_gate(state)
+
+        async def route_after_side_effect(state: AgentState) -> str:
+            return after_side_effect(state)
+
         builder = StateGraph(AgentState)
         builder.add_node(NODE_CONTEXT, make_build_context_node(self.context_manager, self.on_event))
         builder.add_node(
@@ -110,7 +129,11 @@ class Orchestrator:
         builder.add_node(
             NODE_ACT,
             make_act_node(
-                self.tool_runtime, self.skill_loader, self.subagent_runtime, self.on_event
+                self.tool_runtime,
+                self.skill_loader,
+                self.subagent_runtime,
+                self.interaction_provider,
+                self.on_event,
             ),
         )
         builder.add_node(NODE_TERMINATE, self._terminate_node)
@@ -119,27 +142,28 @@ class Orchestrator:
         builder.add_edge(NODE_CONTEXT, NODE_TOKEN_GUARD)
         builder.add_conditional_edges(
             NODE_TOKEN_GUARD,
-            after_token_guard,
+            route_after_token_guard,
             {NODE_COMPACT: NODE_COMPACT, NODE_LLM: NODE_LLM},
         )
         builder.add_edge(NODE_COMPACT, NODE_LLM)
 
-        policy = self.termination_policy
         after_llm_targets = {NODE_ACT: NODE_ACT, NODE_TERMINATE: NODE_TERMINATE}
         if self.permission_gate is not None:
             after_llm_targets[NODE_PERMISSION] = NODE_PERMISSION
         builder.add_conditional_edges(
             NODE_LLM,
-            lambda state: after_llm(state, policy),
+            route_after_llm,
             after_llm_targets,
         )
         if self.permission_gate is not None:
             builder.add_conditional_edges(
                 NODE_PERMISSION,
-                after_gate,
+                route_after_gate,
                 {NODE_ACT: NODE_ACT, NODE_TERMINATE: NODE_TERMINATE},
             )
-        builder.add_conditional_edges(NODE_ACT, after_side_effect, {NODE_CONTEXT: NODE_CONTEXT})
+        builder.add_conditional_edges(
+            NODE_ACT, route_after_side_effect, {NODE_CONTEXT: NODE_CONTEXT}
+        )
         builder.add_edge(NODE_TERMINATE, END)
 
         self.graph = builder.compile(checkpointer=self.checkpointer)

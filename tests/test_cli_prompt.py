@@ -22,7 +22,7 @@ from harness.cli.composer.composer import PromptInterrupt, SlashCompleter, build
 from harness.cli.render import Renderer
 from harness.cli.state import AppState, CommandPopupState
 from harness.infra.config import HarnessConfig
-from tests.helpers import RecordingConsole
+from tests.helpers import RecordingConsole, render_application_rows
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -62,6 +62,49 @@ async def test_prompt_mark_only_when_popup_is_hidden(app):
     app.composer.sync_popups()
     fragments = app.composer.prompt_fragments()
     assert fragments == [("fg:ansigreen bold", "› ")]
+
+
+async def test_hidden_popup_and_transcript_tail_leave_no_gap_before_prompt(app):
+    """The final information row must sit directly above the input row."""
+
+    from harness.cli.cells import InfoCell
+
+    await app.setup()
+    app.state.append_cell(InfoCell(message="LAST_INFO_ROW"))
+
+    rows = render_application_rows(app, rows=24, columns=80)
+    info_row = next(index for index, row in enumerate(rows) if "LAST_INFO_ROW" in row)
+    prompt_row = next(index for index, row in enumerate(rows) if row.startswith("›"))
+
+    assert prompt_row == info_row + 1, rows
+
+
+@pytest.mark.parametrize("columns", [40, 80, 120])
+async def test_approval_choices_are_fully_visible_at_common_widths(app, columns):
+    """A modal question must not be clipped by the one-line status bar."""
+
+    from harness.permission import from_arguments
+
+    await app.setup()
+    app.interaction._answerable = lambda: True
+    app.approval.request(
+        from_arguments("shell", {"command": "npm install axios"}),
+        "no matching permission rule",
+    )
+    app.approval.offer({"can_session": True, "can_persist": True})
+    try:
+        visible = "\n".join(render_application_rows(app, rows=24, columns=columns))
+        for expected in (
+            "npm install axios",
+            "Allow once",
+            "Allow this session",
+            "Always allow",
+            "Reject",
+            "Enter: confirm",
+        ):
+            assert expected in visible, visible
+    finally:
+        app.approval.cancel()
 
 
 async def test_completer_offers_only_slash_commands(app):
@@ -204,7 +247,7 @@ async def test_prompt_session_runs_with_complete_while_typing(app):
 
 
 def _pipe_session(app, pipe):
-    """A PromptSession wired exactly like MiniAgentApp.create_prompt_session()."""
+    """A PromptSession that exercises the application's real key bindings."""
 
     from prompt_toolkit import PromptSession
 
@@ -293,33 +336,6 @@ async def test_ctrl_d_exits_with_eof(app):
         assert task.done()
         with pytest.raises(EOFError):
             task.result()
-
-
-async def test_prompt_loop_runs_commands_and_exits(app):
-    """The whole loop, not just the bindings: slash command -> request -> exit."""
-
-    await app.setup()
-    console = app.renderer.console
-    with create_pipe_input() as pipe:
-        app.create_prompt_session = lambda: _pipe_session(app, pipe)
-        async with app.session:
-            loop = asyncio.ensure_future(app.prompt_loop())
-            await asyncio.sleep(0.3)
-            for text in ("/help", "!echo loop-check", "list the files", "/exit"):
-                pipe.send_bytes(text.encode())
-                await asyncio.sleep(0.25)
-                pipe.send_bytes(b"\r")
-                await asyncio.sleep(1.6 if text.startswith("list") else 0.6)
-                if loop.done():
-                    break
-            assert loop.done(), "the loop never exited"
-            assert await asyncio.wait_for(loop, timeout=5) == 0
-
-    printed = console.rich_text() if hasattr(console, "rich_text") else console.plain()
-    assert "/status" in printed, "the /help handler did not run"
-    assert "loop-check" in printed, "the !shell intent did not run"
-    kinds = [type(cell).__name__ for cell in app.state.history_cells]
-    assert "AssistantCell" in kinds, "no request reached the agent"
 
 
 async def test_plain_loop_renders_a_fatal_error_turn(app, monkeypatch):

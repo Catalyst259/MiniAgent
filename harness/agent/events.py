@@ -27,6 +27,8 @@ EventType = Literal[
     "tool_denied",
     "permission_ask",
     "permission_decision",
+    "interaction_request",
+    "interaction_resolved",
     "skill_load",
     "delegate_start",
     "delegate_end",

@@ -41,7 +41,7 @@ def pending_tool_calls(messages: list[Message]) -> list[ToolCall]:
     return [
         call
         for call in message.tool_calls
-        if call.name not in ("load_skill", "delegate")
+        if call.name not in ("load_skill", "delegate", "request_user_input")
     ]
 
 
@@ -57,6 +57,13 @@ def pending_delegate_calls(messages: list[Message]) -> list[ToolCall]:
     if message is None:
         return []
     return [call for call in message.tool_calls if call.name == "delegate"]
+
+
+def pending_interaction_calls(messages: list[Message]) -> list[ToolCall]:
+    message = last_assistant(messages)
+    if message is None:
+        return []
+    return [call for call in message.tool_calls if call.name == "request_user_input"]
 
 
 def after_token_guard(state: AgentState) -> str:
@@ -80,7 +87,12 @@ def after_llm(state: AgentState, policy: TerminationPolicy) -> str:
         return NODE_TERMINATE
 
     messages = list(state.get("messages") or [])
-    if pending_skill_calls(messages) or pending_delegate_calls(messages) or pending_tool_calls(messages):
+    if (
+        pending_skill_calls(messages)
+        or pending_delegate_calls(messages)
+        or pending_interaction_calls(messages)
+        or pending_tool_calls(messages)
+    ):
         return NODE_PERMISSION
     # Assistant produced neither text nor tool calls: treat as an implicit stop.
     return NODE_TERMINATE
@@ -96,6 +108,7 @@ def after_gate(state: AgentState) -> str:
         data.get("pending_tools")
         or data.get("pending_skills")
         or data.get("pending_delegates")
+        or data.get("pending_interactions")
     ):
         return NODE_ACT
     return NODE_TERMINATE
@@ -113,6 +126,7 @@ def pending_calls_by_kind(state: AgentState) -> dict[str, list[ToolCall]]:
         "tools": pending_tool_calls(messages),
         "skills": pending_skill_calls(messages),
         "delegates": pending_delegate_calls(messages),
+        "interactions": pending_interaction_calls(messages),
     }
 
 
@@ -136,5 +150,6 @@ __all__ = [
     "pending_tool_calls",
     "pending_skill_calls",
     "pending_delegate_calls",
+    "pending_interaction_calls",
     "pending_calls_by_kind",
 ]
