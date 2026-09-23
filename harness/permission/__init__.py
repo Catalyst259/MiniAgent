@@ -43,9 +43,7 @@ from harness.permission.approval import (
     Approval,
     ApprovalProvider,
     ApprovalRequest,
-    AutoAllowProvider,
     AutoDenyProvider,
-    ScriptedProvider,
 )
 from harness.permission.decision import Permission, Verdict, most_restrictive
 from harness.permission.evaluator import PermissionEvaluator
@@ -91,9 +89,7 @@ __all__ = [
     "Approval",
     "ApprovalProvider",
     "ApprovalRequest",
-    "AutoAllowProvider",
     "AutoDenyProvider",
-    "ScriptedProvider",
     "SCOPES",
     "SCOPE_LABELS",
 ]

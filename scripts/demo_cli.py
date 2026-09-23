@@ -4,12 +4,11 @@
 Runs the same ``MiniAgentApp`` used by the interactive TUI, but feeds it a script
 instead of keystrokes so it works without a terminal.
 
-    .venv/bin/python scripts/demo_cli.py --workspace /tmp/demo
+    .venv/bin/python scripts/demo_cli.py
 """
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -31,28 +30,15 @@ SCRIPT = [
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--workspace", default=".")
-    parser.add_argument("--real", action="store_true", help="use the configured model instead of --mock")
-    parser.add_argument("--show-events", action="store_true")
-    args = parser.parse_args()
+    from harness.inference.config import ModelConfig
 
-    config = load_config(
-        argparse.Namespace(
-            config=None,
-            workspace=args.workspace,
-            mock=not args.real,
-            model=None,
-            no_memory=True,
-            no_checkpoint=True,
-            mcp_stdio=False,
-        )
-    )
+    config = load_config()
+    config.memory.enabled = False
+    config.checkpoint.enabled = False
+    config.models[config.default_model] = ModelConfig(provider="mock", model="mock-main")
     app = MiniAgentApp(
         session=Session(config),
         renderer=Renderer(),
-        stream=True,
-        show_events=args.show_events,
     )
     await app.setup()
     app.renderer.banner()

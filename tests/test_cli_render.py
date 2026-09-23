@@ -520,10 +520,11 @@ def test_command_output_becomes_transcript_cells():
     import asyncio
 
     from harness.cli.app import MiniAgentApp, Session
+    from harness.cli.output import TranscriptOutput
 
     async def run() -> None:
         app = MiniAgentApp(session=None)
-        app._ui_app = type("FakeApp", (), {"invalidate": lambda self: None})()
+        app.presenter.output = TranscriptOutput(lambda: None)
         await Session.cmd_help(object(), app)
         assert app.state.history_cells, "command output did not enter the transcript"
         text = "".join(getattr(cell, "message", "") for cell in app.state.history_cells)

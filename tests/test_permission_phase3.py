@@ -25,11 +25,11 @@ from harness.permission import (
     PersistentMemory,
     PermissionMemory,
     PermissionPolicy,
-    ScriptedProvider,
     SessionMemory,
     build_permission_stack,
     from_arguments,
 )
+from tests.approval_helpers import ScriptedProvider
 from harness.permission.decision import Permission
 from harness.permission.evaluator import PermissionEvaluator
 from harness.permission.gate import PermissionGate

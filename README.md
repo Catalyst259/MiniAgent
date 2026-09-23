@@ -39,7 +39,7 @@ MiniAgent.
 - Python 3.11 or newer (the interactive prompt uses `prompt_toolkit`, installed from
   `requirements.txt`).
 - An API key for an OpenAI-compatible endpoint (DeepSeek, OpenAI, vLLM, ...) unless you
-  run with `--mock`.
+  configure the model provider as `mock`.
 
 ## Install
 
@@ -94,17 +94,12 @@ models:
 ## Run
 
 ```bash
-./miniagent.sh                                  # interactive REPL
-./miniagent.sh "fix the failing test in calc.py"  # one task, then exit
-./miniagent.sh --mock "list the files here"       # offline, no API key needed
-./miniagent.sh --mcp-stdio "..."                  # serve the tools from the MCP stdio server
-.venv/bin/python -m harness.main --help           # same entry point, all flags
+./miniagent.sh
 ```
 
-`./run.sh` still works as a wrapper around `./miniagent.sh`.
-
-Useful flags: `--model <name>`, `--workspace <dir>`, `--mock`, `--plain`, `--no-memory`,
-`--no-checkpoint`, `--show-events`, `-c <config.yaml>`, `--version`.
+Startup takes no arguments and enters an interactive session. Set the model,
+workspace, memory, checkpointing and tool transport in `config.yaml`; API keys
+belong in `.env`. `./run.sh` remains a compatibility wrapper.
 
 ## Tools
 
@@ -231,16 +226,8 @@ UserIntent -> Agent Runtime -> AgentEvent -> AppState -> Renderer
 | **Committed vs active** | The running cell is the *active cell* and is committed to history when it finishes. |
 | **Shell intent** | `!command` is not run by the UI: the composer produces a `ShellIntent` and the runtime executes it through the same sandboxed `shell` tool the model uses. |
 
-Two input modes exist: the interactive prompt (prompt_toolkit, needs a TTY) and a
-line-based fallback used automatically for pipes/CI or with `--plain`. A real terminal
-additionally shows the live streaming tail; when stdout is redirected the renderer
-skips in-place updates so logs stay clean.
-
-`--show-events` prints every runtime event, which makes the agent/UI boundary visible:
-
-```bash
-./miniagent.sh --show-events "explain this repo"
-```
+The interactive prompt requires terminal input (TTY). Piped or redirected input
+is rejected with `Error: stdin is not a terminal`.
 
 ## Slash commands
 
@@ -261,13 +248,11 @@ Pressing `/` shows the same list as a popup, filtered as you type.
 
 ## Mock / offline mode
 
-`--mock` (or `MINIAGENT_MOCK=1`) swaps in a deterministic offline model, so the CLI, tools,
-context assembly, checkpoints and the termination guard can be exercised without an API
-key:
+Set the active model's `provider` to `mock` in `config.yaml` to exercise the
+CLI and tools without an API key. Then launch normally:
 
 ```bash
-./miniagent.sh --mock "find the bug in calc.py"
-MINIAGENT_MOCK=1 ./miniagent.sh
+./miniagent.sh
 ```
 
 The offline model performs a short reconnaissance (`list_dir`, `read_file`, `grep`) and
@@ -280,14 +265,13 @@ mock gateway also streams its answer in chunks, so the streaming path is covered
 input instead of keystrokes, so the CLI can be demonstrated without a terminal:
 
 ```bash
-.venv/bin/python scripts/demo_cli.py --workspace /tmp/demo          # offline
-.venv/bin/python scripts/demo_cli.py --workspace /tmp/demo --real   # uses config.yaml
+.venv/bin/python scripts/demo_cli.py  # offline; workspace comes from config.yaml
 ```
 
 ## Tests
 
 ```bash
-./miniagent.sh --version        # smoke check
+./miniagent.sh                  # interactive startup
 .venv/bin/python -m pytest     # full suite
 ```
 
@@ -322,15 +306,19 @@ harness/
   memory/         # embedding backends, memory stores (Qdrant/in-memory), summary service
   infra/          # config, logging, SQLite checkpoint adapters
   cli/
-    app.py        # MiniAgentApp: intent routing, event sink, prompt loop, batch mode
+    app.py        # MiniAgentApp: assembly, startup and scripted entry points
+    terminal.py   # prompt_toolkit layout, input callbacks and terminal lifecycle
+    controller.py # input routing, Agent turns and task cancellation
+    presenter.py  # event-driven conversation cells and message lifecycle
+    output.py     # console and live transcript output adapters
     events.py     # AgentEvent dataclasses (the runtime/UI boundary)
     state.py      # AppState, TextAreaState, CommandPopupState, StreamState
     events_bridge.py  # runtime events -> UI events
     shell_intent.py   # `!command` as an intent executed by the runtime
-    approval.py   # interactive (future + keys) and plain (stdin) approvers
+    approval.py   # interactive permission approval
     composer/     # composer, slash_commands registry, fuzzy_match, command_popup
     cells/        # base + user/assistant/tool/subagent/error cells
-    streaming/    # assistant_stream (stable/tail), tool_stream
+    streaming/    # assistant_stream (stable/tail)
     render/       # renderer, theme, legacy plain/rich renderers
 skills/           # 4 skills (repo_exploration, debugging, testing, code_review)
 subagents/        # 2 subagents (planner, explorer)

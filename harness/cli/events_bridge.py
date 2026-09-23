@@ -6,11 +6,8 @@ into the UI event model.  Neither side needs to know the other's internals.
 
 from __future__ import annotations
 
-from typing import Any
-
 from harness.agent.events import Event
 from harness.cli import events as ui
-from harness.cli.state import AppState
 
 #: harness event type -> UI event type, for the events that map 1:1
 _DIRECT = {
@@ -18,6 +15,13 @@ _DIRECT = {
     "context": ui.ContextUsage,
     "token_guard": ui.ContextUsage,
     "tool_call": ui.ToolStarted,
+    "tool_start": ui.ToolStarted,
+    "tool_failed": ui.ToolFailed,
+    "tool_denied": ui.ToolFailed,
+    "permission_decision": ui.PermissionDecided,
+    "permission_ask": None,
+    "interaction_request": None,
+    "interaction_resolved": ui.InteractionResolved,
     "tool_result": ui.ToolFinished,
     "skill_load": ui.SkillLoaded,
     "delegate_start": ui.SubAgentStarted,
@@ -33,10 +37,11 @@ _DIRECT = {
 }
 
 
-def translate(event: Event, state: AppState | None = None) -> ui.AgentEvent | None:
+def translate(event: Event) -> ui.AgentEvent | None:
     """Convert one runtime event; ``None`` when the UI has nothing to show."""
 
     kind = event.type
+    assert kind in _DIRECT.keys()
     data = event.data or {}
 
     if kind == "iteration":
@@ -130,26 +135,4 @@ def translate(event: Event, state: AppState | None = None) -> ui.AgentEvent | No
     return None
 
 
-class EventBridge:
-    """Collects harness events and forwards the UI-relevant ones to a sink."""
-
-    def __init__(self, sink, state: AppState | None = None) -> None:
-        self.sink = sink
-        self.state = state
-        self.raw: list[Event] = []
-
-    def __call__(self, event: Event) -> None:
-        self.raw.append(event)
-        translated = translate(event, self.state)
-        if translated is not None:
-            self.sink(translated)
-
-    def find(self, kind: str) -> list[Event]:
-        return [event for event in self.raw if event.type == kind]
-
-    def last(self, kind: str) -> Event | None:
-        found = self.find(kind)
-        return found[-1] if found else None
-
-
-__all__ = ["translate", "EventBridge"]
+__all__ = ["translate"]

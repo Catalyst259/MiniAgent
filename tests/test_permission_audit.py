@@ -20,12 +20,8 @@ import pytest
 from harness.agent.dto import ToolCall
 from harness.inference.config import ModelConfig
 from harness.infra.config import HarnessConfig
-from harness.permission import (
-    PermissionPolicy,
-    ScriptedProvider,
-    build_permission_stack,
-    from_arguments,
-)
+from harness.permission import PermissionPolicy, build_permission_stack, from_arguments
+from tests.approval_helpers import ScriptedProvider
 from harness.permission.decision import Permission
 from harness.permission.evaluator import PermissionEvaluator
 from harness.permission.memory import PermissionMemory
@@ -187,7 +183,7 @@ async def test_e6_a_call_the_gate_already_decided_is_not_asked_again(tmp_path):
     """
 
     from harness.core import AgentHarness
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
 
     root = tmp_path
     cfg = HarnessConfig(
@@ -214,7 +210,7 @@ async def test_e6_a_call_with_no_decision_is_still_gated(tmp_path):
     """The execution boundary decides a call that arrives without a verdict."""
 
     from harness.core import AgentHarness
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
 
     cfg = HarnessConfig(
         workspace_root=str(tmp_path),
@@ -236,7 +232,7 @@ async def test_e6_a_call_with_no_decision_is_still_gated(tmp_path):
 async def test_e6_unanswerable_question_fails_closed_without_blocking(tmp_path):
     """A batch whose caller knows no UI is live must refuse, not hang."""
 
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
 
     root = tmp_path
     cfg = HarnessConfig(
@@ -261,7 +257,7 @@ async def test_e6_decisions_do_not_leak_across_turns(tmp_path):
     """
 
     from harness.core import AgentHarness
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
     from harness.tools.runtime import calls_already_decided, is_decided
 
     root = tmp_path
@@ -312,7 +308,7 @@ async def test_n1_each_call_is_prompted_exactly_once(tmp_path):
 
     from harness.core import AgentHarness
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
 
     cfg = HarnessConfig.load(ROOT / "config.yaml")
     cfg.models = {"main": ModelConfig(provider="mock", model="mock-main")}
@@ -360,7 +356,7 @@ async def test_n1_each_call_is_prompted_exactly_once(tmp_path):
 async def test_n1_a_session_grant_answers_the_rest_of_the_batch(tmp_path):
     from harness.core import AgentHarness
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
-    from harness.permission import ScriptedProvider
+    from tests.approval_helpers import ScriptedProvider
 
     cfg = HarnessConfig.load(ROOT / "config.yaml")
     cfg.models = {"main": ModelConfig(provider="mock", model="mock-main")}

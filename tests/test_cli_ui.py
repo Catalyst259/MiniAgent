@@ -6,7 +6,7 @@ import pytest
 
 from harness.agent.events import Event
 from harness.cli import events as ui
-from harness.cli.app import MiniAgentApp, Session, load_config, build_arg_parser
+from harness.cli.app import MiniAgentApp, Session, load_config
 from harness.cli.cells import (
     AssistantCell,
     ErrorCell,
@@ -27,7 +27,7 @@ from harness.cli.composer import (
     parse_slash,
 )
 from harness.cli.composer.slash_commands import CommandRegistry
-from harness.cli.events_bridge import EventBridge, translate
+from harness.cli.events_bridge import translate
 from harness.cli.render.renderer import Renderer
 from harness.cli.state import AppState, CommandPopupState, StreamState, TextAreaState
 from harness.cli.streaming import AssistantStream
@@ -399,14 +399,15 @@ def test_translate_maps_runtime_events():
     assert translate(Event(type="assistant_text", message="hi")) is None
 
 
-def test_bridge_records_raw_and_forwards_ui_events():
+def test_runtime_event_forwards_ui_events(config, monkeypatch):
+    app = MiniAgentApp(session=Session(config))
     seen: list[ui.AgentEvent] = []
-    bridge = EventBridge(seen.append)
-    bridge(Event(type="iteration", data={"iteration": 1}))
-    bridge(Event(type="assistant_text", message="not a UI event"))
-    assert len(bridge.raw) == 2
+    monkeypatch.setattr(app.presenter, "emit", seen.append)
+    app.on_runtime_event(Event(type="iteration", data={"iteration": 1}))
+    app.on_runtime_event(Event(type="assistant_text", message="not a UI event"))
     assert len(seen) == 1
-    assert bridge.last("assistant_text").message == "not a UI event"
+    assert isinstance(seen[0], ui.AssistantStarted)
+    assert seen[0].iteration == 1
 
 
 # -------------------------------------------------------------------------- app
@@ -428,7 +429,6 @@ def make_app(config) -> MiniAgentApp:
     return MiniAgentApp(
         session=Session(config),
         renderer=Renderer(console=RecordingConsole(), use_live_tail=False),
-        stream=False,  # deterministic: no delta streaming in these tests
     )
 
 
@@ -519,7 +519,6 @@ async def test_app_streaming_produces_single_assistant_cell(tmp_path):
     app = MiniAgentApp(
         session=Session(config),
         renderer=Renderer(console=RecordingConsole(), use_live_tail=False),
-        stream=True,
     )
     await app.setup()
     deltas: list[str] = []
@@ -543,12 +542,12 @@ async def test_app_streaming_produces_single_assistant_cell(tmp_path):
     assert assistants[0].source == "**bold** answer\nsecond line"
 
 
-# ------------------------------------------------------------------- arg parsing
-def test_load_config_flags(tmp_path):
-    args = build_arg_parser().parse_args(
-        ["--mock", "--no-memory", "--workspace", str(tmp_path), "--no-stream"]
-    )
-    config = load_config(args)
+# ------------------------------------------------------------------- configuration
+def test_load_config_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("MINIAGENT_MODELS__MAIN__PROVIDER", "mock")
+    monkeypatch.setenv("MINIAGENT_MEMORY__ENABLED", "false")
+    monkeypatch.setenv("MINIAGENT_RUNTIME__WORKSPACE_ROOT", str(tmp_path))
+    config = load_config()
     assert config.models[config.default_model].provider == "mock"
     assert config.memory.enabled is False
     assert config.checkpoint.enabled is True
@@ -574,7 +573,6 @@ async def test_assistant_answer_is_rendered_exactly_once(config):
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
 
     app = make_app(config)
-    app.stream = True
     await app.setup()
     responses = [
         ScriptedResponse(tool_calls=[ToolCall(name="list_dir", arguments={"path": "."}, id="c1")]),
@@ -635,7 +633,6 @@ async def test_assistant_deltas_update_one_cell(config):
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
 
     app = make_app(config)
-    app.stream = True
     await app.setup()
     async with app.session:
         app.session.harness.set_gateway(
@@ -669,7 +666,6 @@ async def test_tool_call_creates_one_cell_and_renders_pending_then_done(config):
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
 
     app = make_app(config)
-    app.stream = False
     await app.setup()
     responses = [
         ScriptedResponse(
@@ -708,7 +704,8 @@ async def test_duplicate_tool_started_event_does_not_create_second_cell(config):
     started = ui.ToolStarted(call_id="c1", tool="read_file", arguments={"path": "a.py"})
     app.emit(started)
     app.emit(ui.ToolStarted(call_id="c1", tool="read_file", arguments={"path": "a.py"}))
-    assert len(app._tool_cells) == 1
+    assert app.state.active_cell.call_id == "c1"
+    assert not app.state.history_cells
     app.emit(ui.ToolFinished(call_id="c1", tool="read_file", ok=True, text="content"))
     tool_cells = [cell for cell in app.state.history_cells if isinstance(cell, ToolCell)]
     assert len(tool_cells) == 1
@@ -756,7 +753,6 @@ async def test_interleaved_messages_render_once_and_are_all_completed(config):
     from harness.inference.mock_gateway import MockGateway, ScriptedResponse
 
     app = make_app(config)
-    app.stream = True
     await app.setup()
     responses = [
         ScriptedResponse(

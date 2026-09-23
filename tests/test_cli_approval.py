@@ -9,7 +9,6 @@ the real :class:`AppState` the renderer reads.
 from __future__ import annotations
 
 import asyncio
-import io
 from pathlib import Path
 
 import pytest
@@ -17,19 +16,13 @@ import pytest
 from harness.cli import events as ui
 from harness.cli.approval import (
     InteractiveApprovalProvider,
-    PlainApprovalProvider,
     build_options,
 )
 from harness.cli.state import AppState
 from harness.inference.config import ModelConfig
 from harness.infra.config import HarnessConfig
-from harness.permission import (
-    AutoDenyProvider,
-    PermissionMemory,
-    PermissionPolicy,
-    ScriptedProvider,
-    from_arguments,
-)
+from harness.permission import AutoDenyProvider, PermissionMemory, PermissionPolicy, from_arguments
+from tests.approval_helpers import ScriptedProvider
 from harness.permission.evaluator import PermissionEvaluator
 from harness.permission.gate import PermissionGate
 from harness.tools.paths import Workspace
@@ -418,80 +411,6 @@ async def test_app_cancel_clears_the_question():
     assert app.state.interaction is None
 
 
-# -------------------------------------------------------------- plain provider
-class FakeStream:
-    def __init__(self, lines: list[str]) -> None:
-        self._lines = list(lines)
-
-    def readline(self) -> str:
-        return self._lines.pop(0) if self._lines else ""
-
-
-class FakeOut:
-    def __init__(self) -> None:
-        self.text = ""
-
-    def write(self, text: str) -> None:
-        self.text += text
-
-    def flush(self) -> None:
-        pass
-
-
-@pytest.mark.parametrize(
-    "answer,expected",
-    [
-        ("1", "once"),
-        ("2", "session"),
-        ("3", "persistent"),
-        ("4", "reject"),
-        ("y", "once"),
-        ("n", "reject"),
-        ("always", "persistent"),
-        ("", "reject"),
-    ],
-)
-async def test_plain_provider_maps_answers(answer, expected):
-    out = FakeOut()
-    provider = PlainApprovalProvider(stream=FakeStream([answer + "\n"]), out=out)
-    request = provider.request(from_arguments("shell", {"command": "pytest"}), "no rule")
-    approval = await request
-    assert approval.scope == expected
-    assert "Agent wants to run" in out.text
-    assert "Reject" in out.text
-
-
-async def test_plain_provider_fails_closed_on_eof():
-    provider = PlainApprovalProvider(stream=FakeStream([]), out=FakeOut())
-    request = provider.request(from_arguments("shell", {"command": "pytest"}), "no rule")
-    approval = await request
-    assert approval.scope == "reject"
-    assert "no input" in approval.note
-
-
-async def test_plain_provider_rejects_an_unrecognised_answer():
-    out = FakeOut()
-    provider = PlainApprovalProvider(stream=FakeStream(["banana\n"]), out=out)
-    request = provider.request(from_arguments("shell", {"command": "pytest"}), "no rule")
-    approval = await request
-    assert approval.scope == "reject"
-    assert "cannot answer" in out.text
-
-
-async def test_plain_provider_hides_scopes_the_action_cannot_keep():
-    """The stdin menu follows the same rule as the TUI menu."""
-
-    out = FakeOut()
-    provider = PlainApprovalProvider(stream=FakeStream(["3\n"]), out=out)
-    # a chained command can never be matched by a standing rule
-    provider.offer({"can_session": False, "can_persist": False})
-    request = provider.request(from_arguments("shell", {"command": "npm i; rm -rf ~"}), "no rule")
-    approval = await request
-    assert approval.scope == "reject", "an unavailable answer must not be granted"
-    assert "Always allow" not in out.text
-    assert "cannot answer" in out.text
-
-
 # --------------------------------------------------------- !command gating
 def _entries(app) -> str:
     """Everything the app rendered, whichever console it was built with."""
@@ -530,8 +449,7 @@ def make_shell_app(tmp_path, approver, *, mode="ask", rules=None):
 async def test_bang_command_prompts_and_runs_when_allowed(tmp_path):
     """`!command` goes through the same gate as the model's tools."""
 
-    out = io.StringIO()
-    approver = PlainApprovalProvider(stream=io.StringIO("2\n"), out=out)
+    approver = ScriptedProvider(["session"])
     app = make_shell_app(
         tmp_path, approver, rules=[{"tool": "shell", "permission": "ask"}]
     )
@@ -541,13 +459,12 @@ async def test_bang_command_prompts_and_runs_when_allowed(tmp_path):
 
     text = _entries(app)
     assert "gated-ok" in text, "the approved command must have run"
-    assert [choice for _action, choice in approver.history] == ["session"]
-    # the prompt reached the user through the provider
-    assert "Agent wants to run" in out.getvalue()
+    assert approver.answers == ["session"]
+    assert approver.requests, "the command must request approval"
 
 
 async def test_bang_command_is_refused_without_running(tmp_path):
-    approver = PlainApprovalProvider(stream=io.StringIO("4\n"), out=io.StringIO())
+    approver = ScriptedProvider(["reject"])
     app = make_shell_app(
         tmp_path, approver, rules=[{"tool": "shell", "permission": "ask"}]
     )
@@ -559,13 +476,13 @@ async def test_bang_command_is_refused_without_running(tmp_path):
     # the command line is echoed in the trace, but it never produced output
     assert "exit_code" not in text, "a refused command must not run"
     assert "permission denied" in text.lower()
-    assert [choice for _action, choice in approver.history] == ["reject"]
+    assert approver.answers == ["reject"]
 
 
 async def test_bang_command_denied_by_rule_without_prompting(tmp_path):
     """A configured deny needs no question, and must not block the loop."""
 
-    approver = PlainApprovalProvider(stream=io.StringIO(""), out=io.StringIO())
+    approver = ScriptedProvider()
     app = make_shell_app(
         tmp_path, approver, rules=[{"risk": "high", "permission": "deny"}]
     )
@@ -576,7 +493,7 @@ async def test_bang_command_denied_by_rule_without_prompting(tmp_path):
     text = _entries(app)
     assert "exit_code" not in text, "a denied command must not run"
     assert "permission denied" in text.lower()
-    assert approver.history == [], "a deny rule must not ask"
+    assert approver.requests == [], "a deny rule must not ask"
 
 
 async def test_bang_command_without_a_live_ui_fails_closed(tmp_path):
@@ -603,7 +520,7 @@ async def test_bang_command_without_a_live_ui_fails_closed(tmp_path):
 
 
 async def test_bang_command_allowed_by_rule_runs_without_prompting(tmp_path):
-    approver = PlainApprovalProvider(stream=io.StringIO(""), out=io.StringIO())
+    approver = ScriptedProvider()
     app = make_shell_app(
         tmp_path, approver, rules=[{"tool": "shell", "prefix": "echo", "permission": "allow"}]
     )
@@ -613,7 +530,7 @@ async def test_bang_command_allowed_by_rule_runs_without_prompting(tmp_path):
 
     text = _entries(app)
     assert "allowed-direct" in text
-    assert approver.history == []
+    assert approver.requests == []
 
 
 # ------------------------------------------------------------------ app wiring
@@ -634,34 +551,6 @@ async def test_app_wires_the_provider_into_the_harness(tmp_path):
     async with app.session:
         assert isinstance(app.session.harness.approval_provider, InteractiveApprovalProvider)
         assert app.session.harness.permission.gate.approver is app.approval
-        assert app.session.harness.permission.evaluator.can_prompt is True
-
-
-async def test_app_keeps_a_supplied_non_interactive_provider(tmp_path):
-    """A batch/plain run must not be handed a key-driven approver.
-
-    Regression: installing the TUI provider unconditionally made a one-shot run
-    wait forever for a key press that could never come.
-    """
-
-    import io
-
-    from harness.cli.app import MiniAgentApp, Session
-    from harness.cli.render.renderer import Renderer
-
-    config = HarnessConfig.load(ROOT / "config.yaml")
-    config.models = {"main": ModelConfig(provider="mock", model="mock-main")}
-    config.default_model = "main"
-    config.runtime.workspace_root = str(tmp_path)
-    config.memory.enabled = False
-    config.checkpoint.enabled = False
-
-    plain = PlainApprovalProvider(stream=io.StringIO("1\n"), out=io.StringIO())
-    app = MiniAgentApp(session=Session(config, approval_provider=plain), renderer=Renderer())
-    assert app.approval is plain
-    assert app.session.approval_provider is plain
-    async with app.session:
-        assert app.session.harness.permission.gate.approver is plain
         assert app.session.harness.permission.evaluator.can_prompt is True
 
 

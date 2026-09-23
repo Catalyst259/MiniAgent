@@ -83,12 +83,6 @@ class SubAgentStarted:
 
 
 @dataclass
-class SubAgentOutput:
-    agent: str
-    text: str = ""
-
-
-@dataclass
 class SubAgentFinished:
     agent: str
     ok: bool = True
@@ -108,14 +102,6 @@ class ContextUsage:
 @dataclass
 class Compacted:
     folded: int = 0
-
-
-@dataclass
-class ApprovalRequested:
-    """A permission question is open (the question itself lives in the provider)."""
-
-    tool: str
-    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -168,11 +154,9 @@ AgentEvent = Union[
     ToolFailed,
     SkillLoaded,
     SubAgentStarted,
-    SubAgentOutput,
     SubAgentFinished,
     ContextUsage,
     Compacted,
-    ApprovalRequested,
     InteractionResolved,
     PermissionDecided,
     ErrorEvent,
@@ -190,20 +174,14 @@ EVENT_TYPES: tuple[type, ...] = (
     ToolFailed,
     SkillLoaded,
     SubAgentStarted,
-    SubAgentOutput,
     SubAgentFinished,
     ContextUsage,
     Compacted,
-    ApprovalRequested,
     InteractionResolved,
     PermissionDecided,
     ErrorEvent,
     TurnFinished,
 )
-
-
-def event_name(event: object) -> str:
-    return type(event).__name__
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

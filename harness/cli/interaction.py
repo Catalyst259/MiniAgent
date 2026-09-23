@@ -1,9 +1,8 @@
-"""Interactive and line-based adapters for user choice requests."""
+"""Interactive adapter for user choice requests."""
 
 from __future__ import annotations
 
 import asyncio
-import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
@@ -42,13 +41,14 @@ class InteractiveInteractionProvider:
         state: Any,
         on_change: Callable[[], None] | None = None,
         activity: Callable[[str], None] | None = None,
+        answerable: Callable[[], bool] | None = None,
     ) -> None:
         self.state = state
         self.on_change = on_change
         self.activity = activity
         self.pending: PendingInteraction | None = None
         self.history: list[tuple[str, str]] = []
-        self._answerable: Callable[[], bool] = lambda: True
+        self._answerable: Callable[[], bool] = answerable if answerable is not None else lambda: True
 
     def request(
         self,
@@ -189,55 +189,7 @@ class InteractiveInteractionProvider:
             self.on_change()
 
 
-class PlainInteractionProvider:
-    """Line-based choice adapter used by ``--plain`` interactive sessions."""
-
-    available = True
-
-    def __init__(self, *, stream: Any = None, out: Any = None) -> None:
-        self.stream = stream if stream is not None else sys.stdin
-        self.out = out if out is not None else sys.stdout
-
-    async def choose(
-        self,
-        question: str,
-        options: Sequence[Choice],
-        *,
-        title: str = "Choose an option",
-        detail: str = "",
-    ) -> Choice:
-        choices = list(options)
-        self._write(f"\n{title}: {question}")
-        if detail:
-            self._write(detail)
-        for index, choice in enumerate(choices, start=1):
-            suffix = f" — {choice.description}" if choice.description else ""
-            self._write(f"  {index}) {choice.label}{suffix}")
-        try:
-            # Plain mode is already a sequential, line-oriented front end (the
-            # approval adapter uses the same contract).  Reading directly avoids
-            # creating an executor solely to block on stdin, whose shutdown can
-            # otherwise outlive short batch/test event loops.
-            line = self.stream.readline()
-        except (OSError, ValueError):
-            line = ""
-        value = line.strip()
-        if not value:
-            raise InteractionCancelled("no input available")
-        if value.isdigit() and 1 <= int(value) <= len(choices):
-            return choices[int(value) - 1]
-        for choice in choices:
-            if value in (choice.value, choice.label):
-                return choice
-        raise InteractionCancelled(f"unknown choice: {value}")
-
-    def _write(self, text: str) -> None:
-        self.out.write(text + "\n")
-        self.out.flush()
-
-
 __all__ = [
     "InteractiveInteractionProvider",
     "PendingInteraction",
-    "PlainInteractionProvider",
 ]

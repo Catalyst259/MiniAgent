@@ -41,7 +41,6 @@ def app(tmp_path) -> MiniAgentApp:
     return MiniAgentApp(
         session=Session(config),
         renderer=Renderer(console=RecordingConsole(), use_live_tail=False),
-        stream=False,
     )
 
 
@@ -338,43 +337,28 @@ async def test_ctrl_d_exits_with_eof(app):
             task.result()
 
 
-async def test_plain_loop_renders_a_fatal_error_turn(app, monkeypatch):
-    """Regression: a turn ending in a fatal ErrorEvent rendered nothing.
-
-    ``run_prompt`` catches the exception, emits a fatal ``ErrorEvent`` and
-    returns ``None`` without ever reaching the ``TurnFinished`` render path.
-    ``_plain_loop`` therefore has to flush the renderer itself, or the user
-    sees a blank screen and no explanation.
-    """
-
+def test_terminal_entry_runs_async_app(monkeypatch):
     from harness.cli import app as app_module
-    from harness.cli import events as ui
 
-    await app.setup()
-    console = app.renderer.console
+    calls = []
 
-    async def fake_handle_input(line: str) -> bool:
-        # Mimic the memory-lock failure: a fatal error cell, no TurnFinished.
-        app.emit(ui.ErrorEvent(message="RuntimeError: memory store is locked", fatal=True))
-        return True
+    async def fake_async_main():
+        calls.append("started")
+        return 0
 
-    monkeypatch.setattr(app, "handle_input", fake_handle_input)
-    monkeypatch.setattr(app_module.asyncio, "to_thread", lambda fn, *a, **k: _ready(fn(*a, **k)))
-
-    lines = iter(["hello"])
-
-    def fake_input(prompt: str = "") -> str:
-        try:
-            return next(lines)
-        except StopIteration:
-            raise EOFError
-
-    monkeypatch.setattr("builtins.input", fake_input)
-
-    assert await app_module._plain_loop(app) == 0
-    printed = console.rich_text() if hasattr(console, "rich_text") else console.plain()
-    assert "memory store is locked" in printed, "the fatal error was never rendered"
+    monkeypatch.setattr(app_module.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(app_module, "async_main", fake_async_main)
+    assert app_module.main([]) == 0
+    assert calls == ["started"]
 
 
-async def _ready(value):
-    return value
+def test_nonterminal_entry_rejects_before_setup(monkeypatch, capsys):
+    from harness.cli import app as app_module
+
+    def unexpected_config():
+        pytest.fail("configuration must not load for nonterminal input")
+
+    monkeypatch.setattr(app_module.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(app_module, "load_config", unexpected_config)
+    assert app_module.main([]) == 1
+    assert capsys.readouterr().err == "Error: stdin is not a terminal\n"

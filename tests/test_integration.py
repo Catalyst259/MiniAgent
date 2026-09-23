@@ -16,15 +16,53 @@ PYTHON = ROOT / ".venv" / "bin" / "python"
 RUNNER = str(PYTHON if PYTHON.exists() else Path(sys.executable))
 
 
-def run_cli(args: list[str], *, stdin: str = "", timeout: int = 120) -> subprocess.CompletedProcess:
+def run_cli(
+    args: list[str] | tuple[str, ...] = (),
+    *,
+    stdin: str = "",
+    timeout: int = 120,
+    workspace: Path | None = None,
+    transport: str = "local",
+    cwd: Path = ROOT,
+    checkpoint: Path | None = None,
+    session: bool = False,
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT)
+    env["MINIAGENT_MODELS__MAIN__PROVIDER"] = "mock"
+    env["MINIAGENT_MODELS__MAIN__MODEL"] = "mock-main"
+    env["MINIAGENT_MEMORY__ENABLED"] = "false"
+    env["MINIAGENT_CHECKPOINT__ENABLED"] = "true" if checkpoint else "false"
+    if workspace:
+        env["MINIAGENT_RUNTIME__WORKSPACE_ROOT"] = str(workspace)
+    if checkpoint:
+        env["MINIAGENT_CHECKPOINT__PATH"] = str(checkpoint)
+    env["MINIAGENT_TOOLS__TRANSPORT"] = transport
+    command = [RUNNER, "-m", "harness.main", *args]
+    if session:
+        # Exercise sessions programmatically; the CLI itself requires a terminal.
+        command = [RUNNER, "-c", """
+import asyncio
+import sys
+from harness.cli.app import MiniAgentApp, Session, load_config
+
+async def run():
+    app = MiniAgentApp(session=Session(load_config()))
+    await app.setup()
+    app.renderer.banner()
+    async with app.session:
+        for line in sys.stdin:
+            if await app.handle_input(line.strip()):
+                break
+
+asyncio.run(run())
+"""]
     return subprocess.run(
-        [RUNNER, "-m", "harness.main", *args],
+        command,
         input=stdin,
         capture_output=True,
         text=True,
-        cwd=str(ROOT),
+        cwd=str(cwd),
         env=env,
         timeout=timeout,
     )
@@ -44,49 +82,32 @@ def demo_workspace() -> Path:
 
 
 # ----------------------------------------------------------------- CLI binary
-def test_cli_version():
-    result = run_cli(["--version"])
-    assert result.returncode == 0
-    assert "MiniAgent" in result.stdout
+@pytest.mark.parametrize("stdin", ["", "你好\n/exit\n"])
+def test_cli_rejects_piped_input(stdin):
+    result = run_cli(stdin=stdin)
+    assert result.returncode == 1
+    assert result.stderr.strip() == "Error: stdin is not a terminal"
+    assert not result.stdout
 
 
-def test_cli_help_lists_documented_flags():
-    result = run_cli(["--help"])
-    assert result.returncode == 0
-    for flag in ("--mock", "--mcp-stdio", "--workspace", "--model", "--no-memory"):
-        assert flag in result.stdout
+@pytest.mark.parametrize("args", [["--mock"], ["--help"], ["list files"]])
+def test_cli_rejects_arguments(args):
+    result = run_cli(args)
+    assert result.returncode == 2
+    assert "without arguments" in result.stderr
 
 
-def test_cli_oneshot_task_uses_tools(demo_workspace):
-    result = run_cli(
-        ["--mock", "--plain", "--no-memory", "--no-checkpoint", "-w", str(demo_workspace), "list files"]
-    )
-    assert result.returncode == 0
-    assert "list_dir" in result.stdout
-    assert "[mock model" in result.stdout
-
-
-def test_cli_oneshot_over_mcp_stdio(demo_workspace):
-    result = run_cli(
-        [
-            "--mock",
-            "--plain",
-            "--mcp-stdio",
-            "--no-memory",
-            "--no-checkpoint",
-            "-w",
-            str(demo_workspace),
-            "list the files",
-        ]
-    )
-    assert result.returncode == 0
+@pytest.mark.parametrize("transport", ["local", "mcp-stdio"])
+def test_session_task_uses_tools(demo_workspace, transport):
+    result = run_cli(session=True, workspace=demo_workspace, transport=transport, stdin="list files\n/exit\n")
+    assert result.returncode == 0, result.stderr
     assert "list_dir" in result.stdout
     assert "calc.py" in result.stdout
 
 
-def test_cli_repl_slash_commands(demo_workspace):
+def test_session_slash_commands(demo_workspace):
     stdin = "/status\n/skills\n/agents\n/tools\n/model\n/compact\n/clear\n/help\n/exit\n"
-    result = run_cli(["--mock", "--plain", "--no-memory", "-w", str(demo_workspace)], stdin=stdin)
+    result = run_cli(session=True, workspace=demo_workspace, stdin=stdin)
     assert result.returncode == 0
     out = result.stdout
     assert "MiniAgent" in out
@@ -100,9 +121,9 @@ def test_cli_repl_slash_commands(demo_workspace):
     assert "/compact" in out
 
 
-def test_cli_repl_runs_a_task_and_keeps_history(demo_workspace):
+def test_session_runs_a_task_and_keeps_history(demo_workspace):
     stdin = "read calc.py\n/status\n/exit\n"
-    result = run_cli(["--mock", "--plain", "--no-memory", "-w", str(demo_workspace)], stdin=stdin)
+    result = run_cli(session=True, workspace=demo_workspace, stdin=stdin)
     assert result.returncode == 0
     assert "read_file" in result.stdout
     # /status after one turn must report a non-zero turn counter and a message history
@@ -152,7 +173,7 @@ subagents:
 """,
         encoding="utf-8",
     )
-    result = run_cli(["-c", str(config), "--plain", "list files"])
+    result = run_cli(session=True, cwd=tmp_path, checkpoint=checkpoint, stdin="list files\n/exit\n")
     assert result.returncode == 0, result.stderr
     assert checkpoint.exists()
 

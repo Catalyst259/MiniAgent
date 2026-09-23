@@ -12,7 +12,7 @@ from harness.infra.config import HarnessConfig
 from harness.tools.native import NATIVE_TOOL_NAMES
 
 if TYPE_CHECKING:
-    from harness.cli.app import MiniAgentApp
+    from harness.cli.controller import InputController
 
 
 class Session:
@@ -22,13 +22,12 @@ class Session:
         self,
         config: HarnessConfig,
         *,
-        model: str | None = None,
         on_event=None,
         approval_provider=None,
         interaction_provider=None,
     ) -> None:
         self.config = config
-        self.model_name = model or config.default_model
+        self.model_name = config.default_model
         self.history: list[Message] = []
         self.turn = 0
         self.on_event = on_event
@@ -111,14 +110,14 @@ class Session:
             "exit": self.cmd_exit,
         }
 
-    async def cmd_help(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_help(self, app: "InputController", argument: str = "") -> bool:
         app.emit_line("")
         for command in app.registry.all():
             app.emit_line(f"  /{command.name:<9} {command.description}")
         app.emit_line("  !<cmd>    run a shell command in the workspace")
         return False
 
-    async def cmd_status(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_status(self, app: "InputController", argument: str = "") -> bool:
         harness = self.harness
         info = await harness.status()
         context_status = await harness.context_manager.status(self._state("(status)"))
@@ -172,7 +171,7 @@ class Session:
             app.emit_line(f"  {key:<14} {value}")
         return False
 
-    async def cmd_model(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_model(self, app: "InputController", argument: str = "") -> bool:
         if not argument:
             app.emit_line("")
             for name, model_config in sorted(self.config.models.items()):
@@ -188,7 +187,7 @@ class Session:
             app.notify(f"cannot switch model: {exc}", error=True)
         return False
 
-    async def cmd_tools(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_tools(self, app: "InputController", argument: str = "") -> bool:
         harness = self.harness
         app.emit_line("")
         for name in harness.tool_runtime.visible_tools():
@@ -201,7 +200,7 @@ class Session:
                 app.emit_line(f"  {function['name']:<12} {description}")
         return False
 
-    async def cmd_skills(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_skills(self, app: "InputController", argument: str = "") -> bool:
         harness = self.harness
         loaded = set(_loaded_skills(self.history))
         app.emit_line("")
@@ -211,7 +210,7 @@ class Session:
             app.emit_line(f"  {mark} {name}  {metadata.description}")
         return False
 
-    async def cmd_agents(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_agents(self, app: "InputController", argument: str = "") -> bool:
         harness = self.harness
         app.emit_line("")
         for name in harness.subagent_registry.names():
@@ -220,7 +219,7 @@ class Session:
             app.emit_line(f"      tools: {', '.join(spec.tools) or '(none)'}")
         return False
 
-    async def cmd_permissions(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_permissions(self, app: "InputController", argument: str = "") -> bool:
         harness = self.harness
         stack = harness.permission
         if stack is None:
@@ -262,26 +261,22 @@ class Session:
         app.emit_line("  /permissions clear   drop the session grants")
         return False
 
-    async def cmd_compact(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_compact(self, app: "InputController", argument: str = "") -> bool:
         app.notify(await self.compact_now())
         return False
 
-    async def cmd_clear(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_clear(self, app: "InputController", argument: str = "") -> bool:
         self.history = []
         self.turn += 1
         harness = self.harness
         harness.thread_id = f"thread-{self.turn}-{os.getpid() % 10000}"
         if harness.orchestrator is not None:
             harness.orchestrator.thread_id = harness.thread_id
-        app.state.history_cells.clear()
-        app.state.active_cell = None
-        app.state.expanded_tool_ids.clear()
-        app.renderer.reset_history_tracking()
-        app.scroll_to_bottom()
+        app.clear_transcript()
         app.notify(f"conversation cleared (new thread {harness.thread_id})")
         return False
 
-    async def cmd_exit(self, app: "MiniAgentApp", argument: str = "") -> bool:
+    async def cmd_exit(self, app: "InputController", argument: str = "") -> bool:
         return True
 
 

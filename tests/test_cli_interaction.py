@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import io
 
 import pytest
 from prompt_toolkit.application.current import create_app_session
 from prompt_toolkit.input import create_pipe_input
 
-from harness.cli.interaction import InteractiveInteractionProvider, PlainInteractionProvider
+from harness.cli.interaction import InteractiveInteractionProvider
 from harness.cli.state import AppState
 from harness.interaction import Choice, InteractionCancelled, choices_from_payload
 from tests.helpers import SizedDummyOutput, render_application_rows
@@ -47,17 +46,6 @@ async def test_interactive_provider_resolves_the_selected_choice():
     assert not provider.waiting and state.interaction is None
 
 
-async def test_plain_provider_reads_a_numbered_choice():
-    out = io.StringIO()
-    provider = PlainInteractionProvider(stream=io.StringIO("2\n"), out=out)
-    selected = await provider.choose(
-        "How should I continue?",
-        [Choice("fast", "Fast"), Choice("safe", "Safe")],
-    )
-    assert selected.value == "safe"
-    assert "1) Fast" in out.getvalue() and "2) Safe" in out.getvalue()
-
-
 async def test_cancelled_interaction_releases_the_waiter():
     provider = InteractiveInteractionProvider(state=AppState())
     future = provider.request("Continue?", [Choice("yes", "Yes"), Choice("no", "No")])
@@ -88,7 +76,10 @@ async def test_model_choice_panel_is_visible_and_drives_a_real_turn(app):
     with create_pipe_input() as pipe_input:
         with create_app_session(input=pipe_input, output=SizedDummyOutput()):
             application = app.create_application()
-            app._ui_app = application
+            from harness.cli.output import ConsoleOutput, TranscriptOutput
+
+            app.terminal.application = application
+            app.presenter.output = TranscriptOutput(app.terminal.invalidate)
             async with app.session:
                 gateway = MockGateway(app.session.harness.model_config, responses=responses)
                 app.session.harness.set_gateway(gateway)
@@ -114,7 +105,8 @@ async def test_model_choice_panel_is_visible_and_drives_a_real_turn(app):
                         turn.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await turn
-            app._ui_app = None
+        app.terminal.application = None
+        app.presenter.output = ConsoleOutput(app.renderer)
 
     assert result["final_answer"] == "Using the safe strategy."
     interaction_observations = [
@@ -144,5 +136,4 @@ def app(tmp_path):
     return MiniAgentApp(
         session=Session(config),
         renderer=Renderer(console=RecordingConsole(), use_live_tail=False),
-        stream=False,
     )

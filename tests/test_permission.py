@@ -22,18 +22,17 @@ from harness.inference.config import ModelConfig
 from harness.inference.mock_gateway import MockGateway, ScriptedResponse
 from harness.infra.config import HarnessConfig
 from harness.permission import (
-    AutoAllowProvider,
     AutoDenyProvider,
     PermissionMemory,
     PermissionPolicy,
     PersistentMemory,
-    ScriptedProvider,
     SessionMemory,
     build_permission_stack,
     combine_calls,
     from_arguments,
     parse_rules,
 )
+from tests.approval_helpers import AutoAllowProvider, ScriptedProvider
 from harness.permission.action import _patch_paths
 from harness.permission.decision import Permission, Verdict, most_restrictive
 from harness.permission.gate import PermissionGate

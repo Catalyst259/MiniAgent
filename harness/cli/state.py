@@ -129,8 +129,6 @@ class AppState:
     expanded_tool_ids: set[str] = field(default_factory=set)
     activity: str = ""
     active_cell: HistoryCell | None = None
-    assistant_stream: StreamState | None = None
-    dirty: bool = True
     on_change: Callable[[], None] | None = None
     #: the single user choice currently on screen (approval or model question)
     interaction: Any = None
@@ -156,10 +154,6 @@ class AppState:
         """
 
         self.active_cell = cell
-        self.touch()
-
-    def clear_active(self) -> None:
-        self.active_cell = None
         self.touch()
 
     def append_cell(self, cell: HistoryCell) -> None:
@@ -196,7 +190,6 @@ class AppState:
             return
 
     def touch(self) -> None:
-        self.dirty = True
         if self.on_change is not None:
             self.on_change()
 

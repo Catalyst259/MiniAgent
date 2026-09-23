@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Launch MiniAgent.  Usage:
-#   ./miniagent.sh                     interactive REPL
-#   ./miniagent.sh "fix the failing test"
-#   ./miniagent.sh --mock "list the files here"
+# Launch the interactive MiniAgent session: ./miniagent.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 PYTHON="${PYTHON:-.venv/bin/python}"
