@@ -1,9 +1,9 @@
+# Mirrors pyproject.toml: project.dependencies + project.optional-dependencies.dev.
 pydantic>=2.7
 pydantic-settings>=2.3
 openai>=1.40
 langgraph>=0.2.40
 langgraph-checkpoint-sqlite>=2.0
-langchain-core>=0.3
 mcp>=1.2
 qdrant-client>=1.11
 structlog>=24.1

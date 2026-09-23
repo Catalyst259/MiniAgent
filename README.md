@@ -30,7 +30,7 @@ MiniAgent.
 | Qdrant long-term memory | Embedded Qdrant for durable cross-task facts, with a pluggable embedding backend. |
 | Filesystem skills | `SKILL.md` files discovered on disk; only metadata is injected until `load_skill` is called. |
 | Context builder / compact | Deterministic prompt assembly within a token budget, plus compaction when the budget gets tight. |
-| Permission layer | One gate between the model and execution: sandbox, allow/ask/deny rules, approval memory, and a prompt for anything not already decided. See `PERMISSIONS.md`. |
+| Permission layer | One gate between the model and execution: sandbox, allow/ask/deny rules, approval memory, and a prompt for anything not already decided. See [Permissions](#permissions). |
 | Termination guard | Stops the loop on final answer, iteration cap, repeated tool calls, fatal errors or tool failures. |
 | Subagents | `Planner` and `Explorer` run as separate graphs with their own context and a read-only tool ceiling. |
 
@@ -48,6 +48,11 @@ cd /path/to/Agent
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
+
+Dependency declarations live in [pyproject.toml](pyproject.toml).
+[requirements.txt](requirements.txt) mirrors the runtime dependencies plus the
+`dev` extra (`pytest` and `pytest-asyncio`) for the setup above. Keep its package
+names and version constraints synchronized when updating dependencies.
 
 ## Configure
 
@@ -159,9 +164,10 @@ ToolCall -> Action -> [ sandbox | policy rules | memory ] -> ALLOW / DENY / ASK
   `~/.config/miniagent/approvals.json` — deliberately *outside* the workspace, so
   the agent cannot edit its own rules).
 
-`PERMISSIONS.md` documents the full model, the config reference and the security
-decisions. `/permissions` shows the current posture and grants; `/permissions clear`
-drops the session grants.
+See the `permissions` section of [config.yaml](config.yaml) for the shipped policy
+and [harness/permission/](harness/permission/) for its implementation.
+`/permissions` shows the current posture and grants; `/permissions clear` drops
+the session grants.
 
 ## Skills
 
@@ -171,7 +177,7 @@ instructions then stay in context for the rest of the task.
 
 A skill may also declare `tools:` — the tools it relies on. That list is a *ceiling* for
 the rest of the task, never a grant: loading a skill cannot make a tool reachable that the
-permission policy would otherwise refuse (see `PERMISSIONS.md`).
+permission policy would otherwise refuse (see [Permissions](#permissions)).
 
 | Skill | Use it when |
 | --- | --- |
@@ -198,12 +204,16 @@ could never be answered - while still sharing the session's remembered grants.
 
 ## The CLI
 
-The front end follows the architecture in `CLI_Design.md`: it consumes events and
-renders state, and never executes a tool, a model or a subprocess itself.
+The front end separates terminal interaction, task execution and presentation:
+[TerminalUI](harness/cli/terminal.py) owns the terminal,
+[InputController](harness/cli/controller.py) routes input to the session and manages
+tasks, and [ConversationPresenter](harness/cli/presenter.py) updates message state.
+[MiniAgentApp](harness/cli/app.py) assembles these modules. Tools, models and
+subprocesses execute through the runtime.
 
 ```text
-KeyEvent -> Composer -> sync popups -> AppState -> Renderer
-UserIntent -> Agent Runtime -> AgentEvent -> AppState -> Renderer
+TerminalUI -> InputController -> Session -> AgentHarness
+Runtime events -> ConversationPresenter -> AppState -> terminal / console output
 ```
 
 | Piece | Behaviour |
